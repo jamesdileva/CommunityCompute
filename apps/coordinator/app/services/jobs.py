@@ -42,6 +42,7 @@ def create_job(db: Session, payload: JobCreate) -> tuple[Job, list[WorkUnit]]:
         chunk_size=payload.chunk_size,
         status="queued",
         verify_sample=payload.verify_sample,
+        requirements=payload.requirements.model_dump(exclude_unset=True),
     )
     db.add(job)
     units = [

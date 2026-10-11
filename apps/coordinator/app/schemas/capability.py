@@ -54,3 +54,4 @@ class CapabilityProfile(BaseModel):
     ram: MemoryInfo = Field(default_factory=MemoryInfo)
     os: OSInfo = Field(default_factory=OSInfo)
     gpus: list[GPUInfo] = Field(default_factory=list)
+    runtimes: list[str] = Field(default_factory=list)  # Sprint 9: executable workloads

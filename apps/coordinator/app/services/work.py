@@ -29,6 +29,7 @@ from app.models.job import Job
 from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.schemas.work import WorkAssignment, WorkResult
+from app.services.compat import check
 from app.services.workloads.hello_compute import compute as hello_compute, output_hash
 
 log = logging.getLogger("coordinator")
@@ -49,6 +50,9 @@ def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
     Duplicate check units (`verify_of` set) are skipped when the only
     claimant available is the original's worker — verification must come
     from a different worker to mean anything.
+
+    Compatibility (Sprint 9): a unit is only claimed when the worker's
+    stored capability profile satisfies the job's requirements.
     """
     _sweep_expired_leases(db)
     candidates = (
@@ -57,9 +61,16 @@ def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
         .order_by(WorkUnit.created_at, WorkUnit.sequence)
         .all()
     )
+    profile = _worker_profile(db, worker_id)
     unit = None
     for candidate in candidates:
         if candidate.verify_of is None or _original_worker(db, candidate) != worker_id:
+            job = db.get(Job, candidate.job_id)
+            reqs = (job.requirements or {}) if job else {}
+            compatible, reason = check(reqs, profile)
+            if not compatible:
+                log.debug("unit %s skipped for %s: %s", candidate.id, worker_id, reason)
+                continue
             unit = candidate
             break
     if unit is None:
@@ -116,6 +127,14 @@ def _original_worker(db: Session, duplicate: WorkUnit) -> str | None:
         return None
     original_result = db.get(Result, duplicate.verify_of)
     return original_result.worker_id if original_result else None
+
+
+def _worker_profile(db: Session, worker_id: str) -> dict | None:
+    """Latest stored capability profile (None when the worker never reported)."""
+    from app.models.capability import WorkerCapability
+
+    cap = db.get(WorkerCapability, worker_id)
+    return dict(cap.profile) if cap and isinstance(cap.profile, dict) else None
 
 
 def _sweep_expired_leases(db: Session) -> int:

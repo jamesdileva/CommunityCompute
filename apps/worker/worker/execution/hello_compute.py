@@ -78,6 +78,11 @@ class HelloComputeExecutor:
 _REGISTRY = {HelloComputeExecutor.workload_type: HelloComputeExecutor()}
 
 
+def supported_runtimes() -> list[str]:
+    """Workload types this worker can execute (advertised in capabilities, Sprint 9)."""
+    return sorted(_REGISTRY)
+
+
 def execute_unit(assignment: dict) -> UnitResult:
     """Dispatch to a registered executor; unknown types fail closed."""
     executor = _REGISTRY.get(assignment.get("workload_type", ""))

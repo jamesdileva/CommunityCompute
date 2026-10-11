@@ -30,6 +30,8 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(32), default=QUEUED)
     # Sprint 8: fraction of units to double-execute for verification (0..1)
     verify_sample: Mapped[float] = mapped_column(Float, default=0.0)
+    # Sprint 9: declarative requirements (implementation-guide §10)
+    requirements: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -13,12 +13,31 @@ WorkUnitStatus = Literal[
 ]
 
 
+class Requirements(BaseModel):
+    """Declarative workload requirements (Sprint 9, implementation-guide §10).
+
+    Unknown keys are rejected (extra="forbid") so typos fail loudly at
+    submit time instead of silently never matching.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cpu_cores: int | None = Field(default=None, ge=0)
+    ram_mb: int | None = Field(default=None, ge=0)
+    gpu: bool = False
+    gpu_vendor: str | None = Field(default=None, max_length=32)
+    min_vram_mb: int | None = Field(default=None, ge=0)
+    os: str | None = Field(default=None, max_length=64)
+    runtime: str | None = Field(default=None, max_length=64)
+
+
 class JobCreate(BaseModel):
     workload_type: str = Field(min_length=1, max_length=64)
     params: dict = Field(default_factory=dict)
     total_units: int = Field(gt=0)
     chunk_size: int = Field(gt=0)
     verify_sample: float = Field(default=0.0, ge=0.0, le=1.0)
+    requirements: Requirements = Field(default_factory=Requirements)
 
 
 class WorkUnitOut(BaseModel):
@@ -43,6 +62,7 @@ class JobOut(BaseModel):
     chunk_size: int
     status: JobStatus
     verify_sample: float = 0.0
+    requirements: dict = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

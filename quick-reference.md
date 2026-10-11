@@ -56,6 +56,23 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':20,'chunk_size':1}, timeout=5).json()['id'])"
 python -c "import httpx; d = httpx.get('http://127.0.0.1:8000/jobs/<id>', timeout=5).json(); print(d['status'], d['counts'], d['aggregate'])"
 
+# Requirements (Sprint 9): only compatible workers claim these units.
+# Empty requirements = runs anywhere (incl. workers with no profile).
+python -c @"
+import httpx
+base = 'http://127.0.0.1:8000/jobs'
+def sub(reqs, n=1):
+    return httpx.post(base, json={'workload_type':'hello_compute','params':{'op':'sum'},
+        'total_units':n,'chunk_size':1,'requirements':reqs}, timeout=5).json()['id']
+print('cpu  :', sub({'cpu_cores': 4}, 2))
+print('ram  :', sub({'ram_mb': 8192}))
+print('gpu  :', sub({'gpu': True}))
+print('vendor+VRAM:', sub({'gpu': True, 'gpu_vendor': 'amd', 'min_vram_mb': 3000}))
+print('runtime:', sub({'runtime': 'hello_compute'}))
+print('os   :', sub({'os': 'Windows'}))
+"@
+# unknown requirement keys are rejected 422 (typos fail loudly at submit)
+
 # Job with duplicate verification (fraction 0..1 double-executed by a 2nd worker)
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':2,'chunk_size':1,'verify_sample':1.0}, timeout=5).json()['id'])"
 # corrupted results -> 422 with failure_kind: value_mismatch | hash_mismatch |

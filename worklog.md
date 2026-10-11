@@ -299,5 +299,31 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Dropped unique constraint needs a dev-DB reset (documented in quick-reference); creation code still guarantees one original per sequence.
 - No worker changes: the executor's deterministic math already matched; verification lives server-side by design.
 **Next steps:**
-- Sprint 9: scheduler compatibility — workload requirements vs capability profiles (heterogeneous routing).
+- Sprint 9: scheduler compatibility — workload requirements vs capability profiles (heterogeneous routing) (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 9: Scheduler Compatibility
+**Goal:** Stop treating every machine as identical — route only compatible work (roadmap Sprint 9).
+**Scope (in / out):**
+- In (Full Sprint 9): declarative Requirements schema on jobs, worker profile lookup at claim time, compat filter in claim path, runtimes in capabilities, routing tests.
+- Out: H1/H2/H3 tiers + explanation endpoint (S10), scoring (S31), policy-aware routing (S11), runtime capability *probes* (benchmarks — guide §9).
+**Exit condition (verbatim from roadmap):** Create two Work Unit types (CPU-only, GPU-required). The scheduler sends each only to compatible Workers.
+**Changes:**
+- Coordinator: schemas/job.py (Requirements extra="forbid" — typo'd keys rejected 422; JobCreate.requirements; JobOut/JobStatusOut echo), models/job.py (+requirements JSON), services/compat.py (check() in architecture §10 order: CPU → RAM → OS → runtime → GPU vendor/VRAM), services/jobs.py (requirements stored), services/work.py (claim filters candidates by worker's stored profile; same-worker duplicate skip kept), api/jobs.py (status echoes verify_sample/requirements), version → 0.1.0-sprint9
+- Worker: capabilities schema +discover +runtimes (executor registry), worker/__init__.py path bootstrap (robust standalone `packages.protocol` import)
+- tests: test_compat.py (16), test_claim_routing.py (8), test_discover runtimes
+- quick-reference.md requirements snippets
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 129 passed
+- random order → 129 passed
+- Live: both workers report runtimes ['hello_compute']; CPU-only job (4 units) → **completed** final=10 across both workers; amd-GPU job (2) → **completed** final=3; nvidia-GPU job → stays **queued** (correctly starves both workers) — pass
+**Decisions:**
+- Conventions: empty requirements = runs anywhere (legacy workers, unrestricted jobs); non-empty requirements with no reported profile = incompatible (fail closed).
+- Two bugs caught by tests before commit: (1) default-populated requirements dict was truthy-but-vacuous → `exclude_unset` when persisting; (2) compat treated vacuous dicts as real requirements → normalize None/False before matching.
+- Filtering happens per-candidate at claim time, O(queue) — fine for prototype; Sprint 31 scoring will want precomputed match sets.
+- `gpu: false` is not a "CPU-only" flag in the matching sense — it simply doesn't constrain; CPU-only jobs are expressed with `cpu_cores`/`ram_mb`.
+**Next steps:**
+- Sprint 10: hardware tiers + capability explanation (scheduler says why).
 - Two-machine E2E still pending (see quick-reference.md).
