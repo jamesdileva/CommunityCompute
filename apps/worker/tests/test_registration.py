@@ -87,3 +87,40 @@ def test_run_loop_stops_when_event_set(monkeypatch, tmp_path):
                        "--worker-id-file", str(tmp_path / "wid")])
     assert run_worker(args, stop) == 0
     assert calls == []
+
+
+def test_run_loop_registers_once_then_heartbeats(monkeypatch, tmp_path):
+    """Sprint 4: loop = register (once) + capabilities, then heartbeat each interval."""
+    events: list[str] = []
+    monkeypatch.setattr(
+        main_mod, "register_worker",
+        lambda *a, **k: events.append("register") or {"id": "ok"},
+    )
+    monkeypatch.setattr(main_mod, "report_capabilities",
+                        lambda *a, **k: events.append("capabilities"))
+    monkeypatch.setattr(main_mod, "send_heartbeat",
+                        lambda *a, **k: events.append("heartbeat") or {"status": "online"})
+
+    class OneShotEvent:
+        """Sets after 3 waits → exits the loop after 2 beats."""
+
+        def __init__(self) -> None:
+            self._waits = 0
+
+        def is_set(self) -> bool:
+            return self._waits >= 3
+
+        def set(self) -> None:
+            self._waits = 99
+
+        def wait(self, _seconds: float) -> bool:
+            self._waits += 1
+            return False
+
+    args = parse_args(["--loop", "--interval", "0.01",
+                       "--worker-id-file", str(tmp_path / "wid")])
+    assert run_worker(args, OneShotEvent()) == 0  # type: ignore[arg-type]
+    assert events.count("register") == 1  # registration happens once
+    assert events.count("capabilities") == 1
+    assert events.count("heartbeat") == 2  # then heartbeats each interval
+    assert events[:2] == ["register", "capabilities"]

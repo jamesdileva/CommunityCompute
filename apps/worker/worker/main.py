@@ -32,6 +32,7 @@ from worker.config import (  # noqa: E402
 from worker.registration import build_payload, register_worker  # noqa: E402
 from worker.capabilities.discover import discover_capabilities  # noqa: E402
 from worker.capabilities.client import report_capabilities  # noqa: E402
+from worker.heartbeat import build_heartbeat_payload, send_heartbeat  # noqa: E402
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -79,8 +80,23 @@ def _attempt_report_capabilities(coordinator_url: str, worker_id: str, timeout: 
         print(f"[worker {worker_id}] capabilities FAILED: {exc}", flush=True)
 
 
+def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float) -> None:
+    try:
+        payload = build_heartbeat_payload(worker_id)
+        body = send_heartbeat(coordinator_url, payload, timeout=timeout)
+        r = payload["resources"]
+        print(
+            f"[worker {worker_id}] heartbeat ok: cpu={r['cpu_percent']}% "
+            f"ram_free={r['ram_available_mb']}MB gpu={r['gpu_percent']}%",
+            flush=True,
+        )
+        _ = body
+    except Exception as exc:  # noqa: BLE001 — heartbeat failure must not stop the worker
+        print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
+
+
 def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
-    """Startup sequence + optional re-register loop. Returns process exit code."""
+    """Startup: register + capabilities (once). Then loop heartbeats (Sprint 4)."""
     coordinator_url = get_coordinator_url(args.coordinator_url)
     worker_id = get_or_create_worker_id(get_worker_id_file(args.worker_id_file))
     payload = build_payload(worker_id)
@@ -90,27 +106,31 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
         flush=True,
     )
 
-    def register_once(with_capabilities: bool) -> dict | None:
-        result = _attempt_register(coordinator_url, payload, args.timeout)
-        if result is not None and with_capabilities and not args.no_capabilities:
-            _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
-        return result
-
     if not args.loop:
-        result = register_once(with_capabilities=True)
+        result = _attempt_register(coordinator_url, payload, args.timeout)
         if result is None:
             return 1
+        if not args.no_capabilities:
+            _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
         print(f"[worker {worker_id}] registered: {result}", flush=True)
         return 0
 
     print(f"[worker {worker_id}] loop every {args.interval}s (Ctrl+C to stop)", flush=True)
     try:
+        registered = False
         while not stop_event.is_set():
-            result = register_once(with_capabilities=True)
-            if result is not None:
-                print(f"[worker {worker_id}] registered ok (id={result.get('id')})", flush=True)
+            if not registered:
+                result = _attempt_register(coordinator_url, payload, args.timeout)
+                if result is None:
+                    print(f"[worker {worker_id}] retry in {args.interval}s", flush=True)
+                    stop_event.wait(args.interval)
+                    continue
+                if not args.no_capabilities:
+                    _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
+                registered = True
+                print(f"[worker {worker_id}] registered: {result.get('id')}", flush=True)
             else:
-                print(f"[worker {worker_id}] retry in {args.interval}s", flush=True)
+                _attempt_heartbeat(coordinator_url, worker_id, args.timeout)
             stop_event.wait(args.interval)
     except KeyboardInterrupt:
         print(f"[worker {worker_id}] interrupted", flush=True)

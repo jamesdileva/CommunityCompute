@@ -175,4 +175,27 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - capabilities attached to Worker transiently for serialization; no ORM relationship yet (fine for prototype).
 - Schema duplicated worker-side/coordinator-side for now; moving to packages/protocol as shared contract when more message types land (Sprint 5 Job/WorkUnit).
 **Next steps:**
-- Sprint 4: heartbeats & availability (endpoint, loop, last-seen → online/offline, basic utilization reporting).
+- Sprint 4: heartbeats & availability (endpoint, loop, last-seen → online/offline, basic utilization reporting) (done below).
+
+---
+
+## 2026-10-11 — Sprint 4: Heartbeats & Availability
+**Goal:** Know whether workers are alive and available; silence means offline (roadmap Sprint 4).
+**Scope (in / out):**
+- In (Full Sprint 4): heartbeat endpoint + log table, worker heartbeat loop (psutil CPU/RAM + nvidia-smi GPU util), last-seen → online/offline derivation with configurable timeout, utilization on worker rows, tests incl. failure transition test.
+- Out: availability policy engine (S11), temp monitoring (S12), WebSocket control (S17), dashboard.
+**Exit condition (verbatim from roadmap):** Stopping a Worker causes the Coordinator to eventually mark it offline. Restarting it returns it to online status.
+**Changes:**
+- Coordinator: schemas/heartbeat.py (Heartbeat + ResourceSnapshot, extra=forbid), models/heartbeat.py (append-only worker_heartbeats), models/worker.py (+cpu/gpu/ram columns), config (+HEARTBEAT_TIMEOUT_SECONDS=60), services/availability.py (effective_status), api/heartbeats.py (POST heartbeat upsert+log, GET heartbeats log), api/workers.py (derived status in list/detail), db/__init__.py additive ALTER-column bootstrapping for existing dev DBs, version → 0.1.0-sprint4
+- Worker: worker/heartbeat.py (payload + client), main.py `--loop` restructured: register once (with capabilities) → heartbeat every interval
+- .env.example, README
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 54 passed
+- Live (timeout=8s, interval=3s): while running → `online` cpu 36.1% ram 6359MB; kill → +10s → `offline`; restart → `online`; heartbeat log accumulates — pass
+**Decisions:**
+- Status is *derived*, never trusted from the worker: online iff last_seen within timeout; explicit states (paused/disabled) reserved for Sprint 11.
+- Additive-column bootstrap (`_apply_additive_columns`) instead of Alembic for now — dev DBs survive additive sprints; real migrations when data matters.
+- Heartbeat log append-only (audit/diagnostics + Sprint 27 accounting precursor); latest snapshot denormalized onto workers for cheap reads.
+- `--loop` now registers once then heartbeats (previously re-registered each interval) — registration idempotency retained via `--once`.
+**Next steps:**
+- Sprint 5: job + work-unit models, job submission, work-unit generation, state machine, job status endpoint (M1 groundwork).

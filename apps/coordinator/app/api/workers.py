@@ -1,4 +1,4 @@
-"""Worker registry endpoints (Sprint 2: register + list; Sprint 3: capabilities + detail)."""
+"""Worker registry endpoints (Sprint 2: register + list; Sprint 3: capabilities)."""
 
 import logging
 from datetime import datetime, timezone
@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
 from app.models.capability import WorkerCapability
 from app.models.worker import Worker
 from app.schemas.capability import CapabilityProfile
 from app.schemas.worker import WorkerOut, WorkerRegistration
+from app.services.availability import effective_status
 
 log = logging.getLogger("coordinator")
 
@@ -46,26 +48,27 @@ def register_worker(payload: WorkerRegistration, db: Session = Depends(get_db)) 
 
 
 @router.get("", response_model=list[WorkerOut])
-def list_workers(db: Session = Depends(get_db)) -> list[Worker]:
-    """All workers with their latest capability profiles (None when never reported)."""
+def list_workers(db: Session = Depends(get_db)) -> list[WorkerOut]:
+    """All workers: derived online/offline + latest profiles and resources."""
+    timeout = get_settings().heartbeat_timeout_seconds
     workers = list(db.query(Worker).order_by(Worker.first_seen).all())
-    caps = {
-        c.worker_id: c.profile
-        for c in db.query(WorkerCapability).all()
-    }
-    for w in workers:
-        w.capabilities = caps.get(w.id)  # attached transiently for WorkerOut serialization
-    return workers
+    caps = {c.worker_id: c.profile for c in db.query(WorkerCapability).all()}
+    return [_to_out(w, effective_status(w, timeout), caps.get(w.id)) for w in workers]
 
 
 @router.get("/{worker_id}", response_model=WorkerOut)
-def get_worker(worker_id: str, db: Session = Depends(get_db)) -> Worker:
+def get_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
     worker = db.get(Worker, worker_id)
     if worker is None:
         raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+    timeout = get_settings().heartbeat_timeout_seconds
     cap = db.get(WorkerCapability, worker_id)
-    worker.capabilities = cap.profile if cap else None
-    return worker
+    return _to_out(worker, effective_status(worker, timeout), cap.profile if cap else None)
+
+
+def _to_out(worker: Worker, status: str, capabilities: dict | None) -> WorkerOut:
+    out = WorkerOut.model_validate(worker)
+    return out.model_copy(update={"status": status, "capabilities": capabilities})
 
 
 @router.post("/{worker_id}/capabilities", response_model=CapabilityProfile)

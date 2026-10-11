@@ -24,3 +24,6 @@ class WorkerOut(BaseModel):
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     capabilities: dict | None = None
+    cpu_percent: float | None = None
+    gpu_percent: float | None = None
+    ram_available_mb: int | None = None

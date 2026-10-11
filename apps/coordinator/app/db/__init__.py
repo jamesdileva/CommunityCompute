@@ -2,11 +2,16 @@
 
 SQLite is the prototype store per architecture §16. Move to PostgreSQL only
 when concurrency/availability measurably justify it (see AGENTS.md §7).
+
+Schema evolution is additive-only in early sprints: `init_db()` runs
+`create_all()` then best-effort `ALTER TABLE ADD COLUMN` for known new
+columns, so an existing dev DB doesn't need manual surgery (Alembic lands
+when data is worth migrating).
 """
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -21,12 +26,35 @@ _connect_args = {"check_same_thread": False} if _settings.database_url.startswit
 engine = create_engine(_settings.database_url, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
+# Additive column migrations (table -> [(column, sqlite_type)]). Drop when Alembic lands.
+_ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "workers": [
+        ("cpu_percent", "FLOAT"),
+        ("ram_available_mb", "INTEGER"),
+        ("gpu_percent", "FLOAT"),
+    ],
+}
+
 
 def init_db() -> None:
-    """Create tables (imports models so they register on Base.metadata)."""
+    """Create tables + apply additive column migrations (imports models to register them)."""
     from app import models  # noqa: F401 — side-effect import registers models
 
     Base.metadata.create_all(bind=engine)
+    _apply_additive_columns()
+
+
+def _apply_additive_columns() -> None:
+    inspector = inspect(engine)
+    for table, columns in _ADDITIVE_COLUMNS.items():
+        if table not in inspector.get_table_names():
+            continue
+        existing = {col["name"] for col in inspector.get_columns(table)}
+        for name, sqlite_type in columns:
+            if name not in existing:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqlite_type}"))
+                inspector.clear_cache()
 
 
 def get_db() -> Iterator[Session]:

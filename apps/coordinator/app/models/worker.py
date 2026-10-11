@@ -1,15 +1,16 @@
-"""Worker registry table (Sprint 1 skeleton; Sprint 2 registration writes rows here).
-
-Identity rule (implementation-guide §7): `id` is a persistent generated UUID
-supplied by the worker — never the hostname.
-"""
+"""Worker registry table (Sprint 1; Sprint 4 adds last-seen-based availability)."""
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+
+# Statuses a worker can be in. Derived "online"/"offline" come from last_seen
+# vs the heartbeat timeout; explicit states (paused) arrive later (Sprint 11).
+ONLINE = "online"
+OFFLINE = "offline"
 
 
 class Worker(Base):
@@ -24,3 +25,8 @@ class Worker(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # Latest reported resource snapshot (Sprint 4; heartbeat convenience copy)
+    cpu_percent: Mapped[float | None] = mapped_column(Float)
+    ram_available_mb: Mapped[int | None] = mapped_column(Integer)
+    gpu_percent: Mapped[float | None] = mapped_column(Float)

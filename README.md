@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 3 — hardware capability discovery; `GET /workers` shows per-PC profiles. See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 4 — heartbeats + availability (offline on silence, back online on restart). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 
@@ -43,6 +43,11 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once
 
 # 4. Both workers + capability profiles visible
 # → http://127.0.0.1:8000/workers  and  http://127.0.0.1:8000/workers/{id}
+
+# 5. Keep the worker alive in loop mode (registers once, then heartbeats)
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --interval 15
+# → GET /workers shows online + live cpu/ram; stopping it flips to offline
+#   after HEARTBEAT_TIMEOUT_SECONDS (default 60)
 
 # 5. Hardware baseline (this PC)
 python scripts/collect_baseline.py --out docs/baseline-james.json
