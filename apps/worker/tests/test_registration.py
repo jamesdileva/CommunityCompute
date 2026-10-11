@@ -47,6 +47,21 @@ def test_register_worker_failure_raises(monkeypatch):
 def test_run_once_ok(monkeypatch, tmp_path):
     monkeypatch.setattr(main_mod, "register_worker",
                         lambda *a, **k: {"id": "ok", "status": "online"})
+    monkeypatch.setattr(main_mod, "_attempt_report_capabilities", lambda *a, **k: None)
+    args = parse_args(["--once", "--worker-id-file", str(tmp_path / "wid")])
+    assert run_worker(args, threading.Event()) == 0
+
+
+def test_run_once_ok_without_capability_report(monkeypatch, tmp_path):
+    """Telemetry failure must not fail a successful registration (telemetry only)."""
+    monkeypatch.setattr(main_mod, "register_worker",
+                        lambda *a, **k: {"id": "ok", "status": "online"})
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("refused")
+
+    # patch the inner client (discovery stays real; the wrapper must swallow this)
+    monkeypatch.setattr(main_mod, "report_capabilities", boom)
     args = parse_args(["--once", "--worker-id-file", str(tmp_path / "wid")])
     assert run_worker(args, threading.Event()) == 0
 
@@ -56,6 +71,7 @@ def test_run_once_failure_exits_nonzero(monkeypatch, tmp_path):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(main_mod, "register_worker", boom)
+    monkeypatch.setattr(main_mod, "_attempt_report_capabilities", lambda *a, **k: None)
     args = parse_args(["--once", "--worker-id-file", str(tmp_path / "wid")])
     assert run_worker(args, threading.Event()) == 1
 
@@ -64,6 +80,7 @@ def test_run_loop_stops_when_event_set(monkeypatch, tmp_path):
     calls: list = []
     monkeypatch.setattr(main_mod, "register_worker",
                         lambda *a, **k: calls.append(1) or {"id": "ok"})
+    monkeypatch.setattr(main_mod, "_attempt_report_capabilities", lambda *a, **k: None)
     stop = threading.Event()
     stop.set()  # shutdown requested before first iteration
     args = parse_args(["--loop", "--interval", "0.01",

@@ -149,4 +149,30 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Windows signal reality check: `CTRL_C_EVENT` via `os.kill` did NOT deliver to handler (possibly detached from console); `CTRL_BREAK_EVENT` → SIGBREAK (21) works and is now registered alongside SIGINT/SIGTERM. Turtle: `Ctrl+C` in an attached console still delivers SIGINT.
 - `.worker_id*` gitignored so per-machine ID files never commit; second PC keeps own file locally.
 **Next steps:**
-- Sprint 3: hardware capability discovery (CPU/RAM/OS/GPU/VRAM/driver, capability schema + persistence) — needs worker-side discovery + coordinator endpoint/table.
+- Sprint 3: hardware capability discovery (CPU/RAM/OS/GPU/VRAM/driver, capability schema + persistence) — needs worker-side discovery + coordinator endpoint/table (done below).
+
+---
+
+## 2026-10-11 — Sprint 3: Hardware Capability Discovery
+**Goal:** Workers auto-discover CPU/RAM/OS/GPU/VRAM/driver; API shows different profiles per machine. No manual hardware entry allowed (roadmap Sprint 3).
+**Scope (in / out):**
+- In (Full Sprint 3): GPU provider adapters (nvidia-smi → Win32 WMI → Unknown fallback), CPU/RAM/OS discovery, versioned capability schema, `worker_capabilities` table, `POST /workers/{id}/capabilities` + `GET /workers/{id}` + capabilities in `GET /workers`, worker reports capabilities after registration (`--no-capabilities` to skip), collect_baseline.py refactored to thin wrapper over shared discovery, tests.
+- Out: live utilization/temperature telemetry (S12), capability benchmarking (guide §7), workload requirements matching (S9), heartbeat loop (S4).
+**Exit condition (verbatim from roadmap):** Dashboard/API shows different capability profiles for the two machines. No manual hardware entry is allowed.
+**Changes:**
+- Worker: worker/capabilities/{schema,cpu,ram,os_info,discover,client}.py + gpu/{base,nvidia,wmi,unknown,registry}.py; main.py reports profile after registration; requirements.txt +pydantic
+- Coordinator: app/models/capability.py (worker_capabilities: worker_id PK FK, JSON profile, updated_at), app/schemas/capability.py (extra="forbid" — reject junk), app/api/workers.py (+POST capabilities upsert, +GET /workers/{id}, list embeds capabilities), schemas/worker.py (+capabilities field)
+- scripts/collect_baseline.py: now wraps discover_capabilities() (single source of truth); docs/baseline-james.json regenerated (schema_version added, freq_mhz float)
+- README: status + quickstart
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 44 passed
+- `python -m pytest apps/coordinator/tests apps/worker/tests` (random order) → 44 passed
+- Live: worker `--once` → `capabilities reported: amd AMD Radeon RX 6400 4080MB`; `GET /workers` → cpu 12/6 cores, 16258MB RAM, single RX 6400 4080MB entry — pass
+- `collect_baseline.py` regenerated baseline matches live-reported values (parity) — pass
+**Decisions:**
+- Registry runs real providers, appends UnknownProvider only when nothing detected (first live run wrongly double-listed "undetected" — fixed).
+- Coordinator defines its own receive schema with `extra="forbid"` → malformed/typo'd profiles rejected 422 (fail closed at the API boundary).
+- capabilities attached to Worker transiently for serialization; no ORM relationship yet (fine for prototype).
+- Schema duplicated worker-side/coordinator-side for now; moving to packages/protocol as shared contract when more message types land (Sprint 5 Job/WorkUnit).
+**Next steps:**
+- Sprint 4: heartbeats & availability (endpoint, loop, last-seen → online/offline, basic utilization reporting).

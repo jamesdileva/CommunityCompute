@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 2 — worker registration; `GET /workers` lists connected workers. See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 3 — hardware capability discovery; `GET /workers` shows per-PC profiles. See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 
@@ -33,15 +33,16 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir apps/coord
 # → http://127.0.0.1:8000/health returns {"status":"ok",...,"database":{"connected":true,...}}
 # DB file communitycompute.db is created on startup (gitignored, dev-local).
 
-# 2. Worker A registers (terminal 2; idempotent — safe to re-run)
+# 2. Worker A registers + reports capabilities (terminal 2)
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once
+# → console prints discovered CPU/RAM/GPU (adapter providers: nvidia-smi → Win32 → Unknown)
 
 # 3. Worker B registers with its own ID file (simulates 2nd PC locally;
 #    on the real 2nd PC just run step 2 against http://192.168.4.68:8000)
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once --worker-id-file .worker_id_b
 
-# 4. Both workers appear with unique IDs
-# → http://127.0.0.1:8000/workers
+# 4. Both workers + capability profiles visible
+# → http://127.0.0.1:8000/workers  and  http://127.0.0.1:8000/workers/{id}
 
 # 5. Hardware baseline (this PC)
 python scripts/collect_baseline.py --out docs/baseline-james.json

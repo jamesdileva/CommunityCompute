@@ -1,4 +1,4 @@
-"""Worker API schemas (Sprint 2: registration; capability fields land in Sprint 3)."""
+"""Worker API schemas (Sprint 2: registration; capabilities in schemas/capability.py)."""
 
 from datetime import datetime
 from uuid import UUID
@@ -23,3 +23,4 @@ class WorkerOut(BaseModel):
     status: str
     first_seen: datetime | None = None
     last_seen: datetime | None = None
+    capabilities: dict | None = None

@@ -30,6 +30,8 @@ from worker.config import (  # noqa: E402
     get_worker_id_file,
 )
 from worker.registration import build_payload, register_worker  # noqa: E402
+from worker.capabilities.discover import discover_capabilities  # noqa: E402
+from worker.capabilities.client import report_capabilities  # noqa: E402
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -48,6 +50,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--loop", action="store_true", help="Register, then re-register on interval")
     p.add_argument("--interval", type=float, default=15.0, help="Loop interval seconds")
     p.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout seconds")
+    p.add_argument(
+        "--no-capabilities",
+        action="store_true",
+        help="Skip hardware capability discovery/reporting",
+    )
     return p.parse_args(argv)
 
 
@@ -57,6 +64,19 @@ def _attempt_register(coordinator_url: str, payload: dict, timeout: float) -> di
     except Exception as exc:  # noqa: BLE001 — startup diagnostics, refined with logging later
         print(f"[worker {payload['worker_id']}] register FAILED: {exc}", flush=True)
         return None
+
+
+def _attempt_report_capabilities(coordinator_url: str, worker_id: str, timeout: float) -> None:
+    """Discover + POST this machine's profile. Never fatal to the run (telemetry only)."""
+    try:
+        profile = discover_capabilities()
+        report_capabilities(coordinator_url, worker_id, profile, timeout=timeout)
+        gpus = ", ".join(
+            f"{g.vendor} {g.model} " + (f"{g.vram_mb}MB" if g.vram_mb else "vram?") for g in profile.gpus
+        )
+        print(f"[worker {worker_id}] capabilities reported: {gpus or 'no gpu'}", flush=True)
+    except Exception as exc:  # noqa: BLE001 — telemetry failure must not stop the worker
+        print(f"[worker {worker_id}] capabilities FAILED: {exc}", flush=True)
 
 
 def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
@@ -70,8 +90,14 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
         flush=True,
     )
 
-    if not args.loop:
+    def register_once(with_capabilities: bool) -> dict | None:
         result = _attempt_register(coordinator_url, payload, args.timeout)
+        if result is not None and with_capabilities and not args.no_capabilities:
+            _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
+        return result
+
+    if not args.loop:
+        result = register_once(with_capabilities=True)
         if result is None:
             return 1
         print(f"[worker {worker_id}] registered: {result}", flush=True)
@@ -80,7 +106,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
     print(f"[worker {worker_id}] loop every {args.interval}s (Ctrl+C to stop)", flush=True)
     try:
         while not stop_event.is_set():
-            result = _attempt_register(coordinator_url, payload, args.timeout)
+            result = register_once(with_capabilities=True)
             if result is not None:
                 print(f"[worker {worker_id}] registered ok (id={result.get('id')})", flush=True)
             else:
