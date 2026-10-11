@@ -1,0 +1,42 @@
+"""Work API schemas (Sprint 6): assignment out, result in."""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+WORKLOAD_TYPE = "hello_compute"
+
+
+class WorkAssignment(BaseModel):
+    """Coordinator → Worker. `payload` carries workload-specific inputs."""
+
+    protocol_version: str
+    work_unit_id: str
+    job_id: str
+    workload_type: str
+    range_start: int
+    range_end: int
+    params: dict = Field(default_factory=dict)
+
+
+class WorkResult(BaseModel):
+    """Worker → Coordinator. Value verified against coordinator's expectation."""
+
+    protocol_version: str = ""
+    worker_id: str
+    status: str = Field(pattern="^(completed|failed)$")
+    value: object | None = None
+    output_hash: str | None = None
+    error: str | None = None
+    metrics: dict = Field(default_factory=dict)  # e.g. {"execution_ms": 12.3}
+
+
+class ResultOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    work_unit_id: str
+    worker_id: str | None = None
+    ok: bool
+    value: object | None = None
+    output_hash: str | None = None
+    execution_ms: float | None = None
+    error: str | None = None
+    created_at: object = None

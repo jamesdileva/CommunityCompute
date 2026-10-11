@@ -90,7 +90,7 @@ def test_run_loop_stops_when_event_set(monkeypatch, tmp_path):
 
 
 def test_run_loop_registers_once_then_heartbeats(monkeypatch, tmp_path):
-    """Sprint 4: loop = register (once) + capabilities, then heartbeat each interval."""
+    """Sprint 4/6: loop = register (once) + capabilities, then heartbeat + work poll."""
     events: list[str] = []
     monkeypatch.setattr(
         main_mod, "register_worker",
@@ -100,6 +100,7 @@ def test_run_loop_registers_once_then_heartbeats(monkeypatch, tmp_path):
                         lambda *a, **k: events.append("capabilities"))
     monkeypatch.setattr(main_mod, "send_heartbeat",
                         lambda *a, **k: events.append("heartbeat") or {"status": "online"})
+    monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: None)  # idle queue
 
     class OneShotEvent:
         """Sets after 3 waits → exits the loop after 2 beats."""

@@ -1,9 +1,4 @@
-"""WorkUnit model (Sprint 5): the smallest independently executable piece.
-
-Each unit owns a half-open numeric range [start..end] derived from the job's
-(total_units, chunk_size) — deterministic ranges make result verification
-exact for hello-compute style workloads (implementation-guide §11).
-"""
+"""WorkUnit model (Sprint 5; Sprint 6 adds assignment columns)."""
 
 from datetime import datetime
 
@@ -31,6 +26,8 @@ class WorkUnit(Base):
     range_start: Mapped[int] = mapped_column(Integer)
     range_end: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(32), default=QUEUED)
+    assigned_worker_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

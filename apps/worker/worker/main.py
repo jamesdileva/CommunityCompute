@@ -1,11 +1,12 @@
-"""Worker process (Sprint 2: startup sequence + registration + graceful shutdown).
+"""Worker process (Sprint 2+; Sprint 6: work loop — claim, execute, submit).
 
 Startup sequence (implementation-guide §5):
-    load config -> persistent worker ID -> register -> loop (re-register) until stopped.
+    load config -> persistent worker ID -> register -> heartbeat -> poll/execute.
 
 Usage:
     python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once
-    python apps/worker/worker/main.py --coordinator-url http://192.168.4.68:8000 --loop --interval 15
+    python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --interval 3
+    python apps/worker/worker/main.py --coordinator-url http://192.168.4.68:8000 --loop
 
 Second PC: same command with the coordinator's LAN URL; use a separate
 --worker-id-file per machine (each PC keeps its own persistent UUID).
@@ -19,8 +20,10 @@ import sys
 import threading
 from pathlib import Path
 
-# Allow direct execution: `python apps/worker/worker/main.py` (adds apps/worker to sys.path).
+# Allow direct execution: `python apps/worker/worker/main.py`. Adds both
+# apps/worker (package imports) and the repo root (packages.protocol).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import httpx  # noqa: E402
 
@@ -33,6 +36,8 @@ from worker.registration import build_payload, register_worker  # noqa: E402
 from worker.capabilities.discover import discover_capabilities  # noqa: E402
 from worker.capabilities.client import report_capabilities  # noqa: E402
 from worker.heartbeat import build_heartbeat_payload, send_heartbeat  # noqa: E402
+from worker.execution.hello_compute import execute_unit  # noqa: E402
+from worker.work import claim_work, submit_result  # noqa: E402
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -56,6 +61,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip hardware capability discovery/reporting",
     )
+    p.add_argument("--no-work", action="store_true", help="Skip work polling/execution")
     return p.parse_args(argv)
 
 
@@ -95,8 +101,40 @@ def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float) -> 
         print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
 
 
+def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float) -> None:
+    """Claim one unit, execute, submit. All failures logged, never fatal."""
+    try:
+        assignment = claim_work(coordinator_url, worker_id, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001 - claim failure: retry next tick
+        print(f"[worker {worker_id}] work claim FAILED: {exc}", flush=True)
+        return
+    if not assignment:
+        return  # nothing queued
+    unit_id = assignment.get("work_unit_id")
+    result = execute_unit(assignment)  # validates, then computes (fail closed)
+    print(
+        f"[worker {worker_id}] unit {unit_id} {assignment.get('range_start')}.."
+        f"{assignment.get('range_end')} -> {result.status}"
+        + (f" value={result.value}" if result.status == "completed" else f" ({result.error})"),
+        flush=True,
+    )
+    body = {
+        "protocol_version": assignment.get("protocol_version", ""),
+        "worker_id": worker_id,
+        "status": result.status,
+        "value": result.value,
+        "output_hash": result.output_hash,
+        "error": result.error,
+        "metrics": {"execution_ms": result.execution_ms},
+    }
+    try:
+        submit_result(coordinator_url, unit_id, body, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001 - result rejected/lost: retry next tick later
+        print(f"[worker {worker_id}] result submit FAILED: {exc}", flush=True)
+
+
 def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
-    """Startup: register + capabilities (once). Then loop heartbeats (Sprint 4)."""
+    """Startup: register + capabilities (once). Then loop: heartbeat → work (Sprints 4/6)."""
     coordinator_url = get_coordinator_url(args.coordinator_url)
     worker_id = get_or_create_worker_id(get_worker_id_file(args.worker_id_file))
     payload = build_payload(worker_id)
@@ -131,6 +169,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
                 print(f"[worker {worker_id}] registered: {result.get('id')}", flush=True)
             else:
                 _attempt_heartbeat(coordinator_url, worker_id, args.timeout)
+                if not args.no_work:
+                    _attempt_work_cycle(coordinator_url, worker_id, args.timeout)
             stop_event.wait(args.interval)
     except KeyboardInterrupt:
         print(f"[worker {worker_id}] interrupted", flush=True)

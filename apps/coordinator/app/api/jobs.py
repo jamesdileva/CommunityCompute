@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.job import JobCreate, JobOut, JobStatusOut, WorkUnitOut
 from app.services import jobs as job_service
+from app.services import work as work_service
 
 log = logging.getLogger("coordinator")
 
@@ -45,4 +46,5 @@ def job_status(job_id: str, db: Session = Depends(get_db)) -> JobStatusOut:
         updated_at=data.job.updated_at,
         work_units=[WorkUnitOut.model_validate(u) for u in data.units],
         counts=data.counts,
+        aggregate=work_service.aggregate_job(db, job_id),
     )

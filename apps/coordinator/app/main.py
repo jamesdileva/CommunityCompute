@@ -17,6 +17,7 @@ from app.api.health import VERSION, router as health_router
 from app.api.heartbeats import router as heartbeats_router
 from app.api.jobs import router as jobs_router
 from app.api.workers import router as workers_router
+from app.api.work import router as work_router
 from app.config import get_settings
 from app.db import init_db
 
@@ -40,6 +41,7 @@ app.include_router(health_router)
 app.include_router(workers_router)
 app.include_router(heartbeats_router)
 app.include_router(jobs_router)
+app.include_router(work_router)
 
 
 def _envelope(code: int, message: object) -> dict:

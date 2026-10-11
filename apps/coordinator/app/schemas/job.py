@@ -29,6 +29,7 @@ class WorkUnitOut(BaseModel):
     range_start: int
     range_end: int
     status: WorkUnitStatus
+    assigned_worker_id: str | None = None
 
 
 class JobOut(BaseModel):
@@ -49,3 +50,4 @@ class JobStatusOut(JobOut):
 
     work_units: list[WorkUnitOut] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
+    aggregate: dict | None = None

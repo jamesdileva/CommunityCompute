@@ -221,4 +221,31 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - State machine encodes transition rules now; nothing *drives* transitions until Sprint 6/7 (validated-only).
 - Job status aggregates read from unit statuses (no background rollup job) — simple and correct for prototype.
 **Next steps:**
-- Sprint 6: first distributed workload — worker polling + assignment + execution + result upload + aggregation (M1).
+- Sprint 6: first distributed workload — worker polling + assignment + execution + result upload + aggregation (M1) (done below).
+
+---
+
+## 2026-10-11 — Sprint 6: First Distributed Workload (M1)
+**Goal:** One submitted Job divided across workers; verified results; correct aggregate (roadmap Sprint 6, milestone M1).
+**Scope (in / out):**
+- In (Full Sprint 6): protocol package (version + fail-closed check), hello-compute reference (coordinator) + executor (worker, validates before executing), FIFO claim, result verification + persistence, job aggregation + rollup status, worker work loop.
+- Out: leases/expiry + retries (S7), requirement/capability matching (S9), WebSocket (S17), adapter registry formalization (S13).
+**Exit condition (verbatim from roadmap):** One submitted Job is divided across both PCs and produces one correct final result. (This is the first major project milestone.)
+**Changes:**
+- packages/protocol: PROTOCOL_VERSION + message names + `version_supported()`; path bootstrap added to both apps (`app/__init__.py`, worker `main.py`)
+- Coordinator: services/workloads/hello_compute.py (sum/hash + output_hash), models/result.py, work_units +assigned_worker_id/dispatched_at (additive migration), services/work.py (claim, submit+verify, aggregate, rollup), api/work.py (GET /work/{worker}, POST /work/{unit}/result, 422 on mismatch), schemas/work.py, JobStatusOut +aggregate/assigned_worker_id, version → 0.1.0-sprint6
+- Worker: worker/execution/hello_compute.py (executor + registry + validation), worker/work.py (claim/submit clients), main.py work cycle in loop (`--no-work` skip)
+- tests: coordinator test_work.py (11), worker test_executor.py + test_work_client.py (11)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 91 passed
+- `python -m pytest apps/coordinator/tests apps/worker/tests` (random order) → 91 passed
+- Live M1 (two workers, separate ID files, interval 2s): job 20×1 → status **completed**, counts {completed:20}, aggregate **final=210** (=Σ1..20); split 10 units A / 10 units B — pass
+- Corrupted direct POST (value 999999) → 422 rejected, unit failed — pass
+**Decisions:**
+- Verification at the coordinator: it recomputes expected values from deterministic ranges — never trusts worker output (architecture §18).
+- Worker fails closed: protocol version, workload type, range sanity all validated before execution; executor registry rejects unknown workloads.
+- Claim is FIFO with optimistic dispatch (no lease yet); duplicate verified results are idempotent 200; mismatches fail the unit (job → failed).
+- Error envelope nests `detail` under `error.message` (existing handler); adjusted tests accordingly.
+**Next steps:**
+- Sprint 7: leasing (lease_id/expires_at/attempt_number), reclaim expired work, kill-worker retry test (M2 fault tolerance).
+- Two-machine E2E still pending (laptop on LAN, `python apps/worker/worker/main.py --coordinator-url http://192.168.4.68:8000 --loop`).
