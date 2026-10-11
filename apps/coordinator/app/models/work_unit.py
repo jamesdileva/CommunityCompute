@@ -1,4 +1,4 @@
-"""WorkUnit model (Sprint 5; Sprint 6 adds assignment columns)."""
+"""WorkUnit model (Sprint 5; S6 assignment; S7 leasing columns)."""
 
 from datetime import datetime
 
@@ -15,6 +15,9 @@ FAILED = "failed"
 CANCELLED = "cancelled"
 INTERRUPTED = "interrupted"
 
+# Lease-held states: a unit in these states holds a live lease until it ends.
+LEASE_STATES = (DISPATCHED, RUNNING)
+
 
 class WorkUnit(Base):
     __tablename__ = "work_units"
@@ -28,6 +31,12 @@ class WorkUnit(Base):
     status: Mapped[str] = mapped_column(String(32), default=QUEUED)
     assigned_worker_id: Mapped[str | None] = mapped_column(String(36), index=True)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Sprint 7 lease columns (implementation-guide §14)
+    lease_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    lease_worker_id: Mapped[str | None] = mapped_column(String(36))
+    lease_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_number: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

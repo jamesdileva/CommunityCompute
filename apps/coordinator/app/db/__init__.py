@@ -36,6 +36,11 @@ _ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "work_units": [
         ("assigned_worker_id", "VARCHAR(36)"),
         ("dispatched_at", "TIMESTAMP"),
+        ("lease_id", "VARCHAR(36)"),
+        ("lease_worker_id", "VARCHAR(36)"),
+        ("lease_started_at", "TIMESTAMP"),
+        ("lease_expires_at", "TIMESTAMP"),
+        ("attempt_number", "INTEGER DEFAULT 0"),
     ],
 }
 

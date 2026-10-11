@@ -18,6 +18,7 @@ import argparse
 import signal
 import sys
 import threading
+import time
 from pathlib import Path
 
 # Allow direct execution: `python apps/worker/worker/main.py`. Adds both
@@ -62,6 +63,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip hardware capability discovery/reporting",
     )
     p.add_argument("--no-work", action="store_true", help="Skip work polling/execution")
+    p.add_argument(
+        "--execution-delay",
+        type=float,
+        default=0.0,
+        help="Simulate slow work: seconds to sleep before computing (failure tests)",
+    )
     return p.parse_args(argv)
 
 
@@ -101,7 +108,8 @@ def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float) -> 
         print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
 
 
-def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float) -> None:
+def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
+                        execution_delay: float = 0.0) -> None:
     """Claim one unit, execute, submit. All failures logged, never fatal."""
     try:
         assignment = claim_work(coordinator_url, worker_id, timeout=timeout)
@@ -111,6 +119,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float) ->
     if not assignment:
         return  # nothing queued
     unit_id = assignment.get("work_unit_id")
+    if execution_delay > 0:
+        time.sleep(execution_delay)  # simulated slow work (failure-test knob)
     result = execute_unit(assignment)  # validates, then computes (fail closed)
     print(
         f"[worker {worker_id}] unit {unit_id} {assignment.get('range_start')}.."
@@ -128,9 +138,12 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float) ->
         "metrics": {"execution_ms": result.execution_ms},
     }
     try:
-        submit_result(coordinator_url, unit_id, body, timeout=timeout)
-    except Exception as exc:  # noqa: BLE001 - result rejected/lost: retry next tick later
+        submitted = submit_result(coordinator_url, unit_id, body, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001 - rejected/lost: move on, sweep will requeue
         print(f"[worker {worker_id}] result submit FAILED: {exc}", flush=True)
+        return
+    if submitted.get("status") == "already_completed":
+        print(f"[worker {worker_id}] unit {unit_id} already completed elsewhere", flush=True)
 
 
 def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
@@ -170,7 +183,10 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
             else:
                 _attempt_heartbeat(coordinator_url, worker_id, args.timeout)
                 if not args.no_work:
-                    _attempt_work_cycle(coordinator_url, worker_id, args.timeout)
+                    _attempt_work_cycle(
+                        coordinator_url, worker_id, args.timeout,
+                        execution_delay=args.execution_delay,
+                    )
             stop_event.wait(args.interval)
     except KeyboardInterrupt:
         print(f"[worker {worker_id}] interrupted", flush=True)

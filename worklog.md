@@ -247,5 +247,31 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Claim is FIFO with optimistic dispatch (no lease yet); duplicate verified results are idempotent 200; mismatches fail the unit (job → failed).
 - Error envelope nests `detail` under `error.message` (existing handler); adjusted tests accordingly.
 **Next steps:**
-- Sprint 7: leasing (lease_id/expires_at/attempt_number), reclaim expired work, kill-worker retry test (M2 fault tolerance).
+- Sprint 7: leasing (lease_id/expires_at/attempt_number), reclaim expired work, kill-worker retry test (M2 fault tolerance) (done below).
+
+---
+
+## 2026-10-11 — Sprint 7: Work Unit Leasing (M2)
+**Goal:** Worker failure is survivable — expired leases return to the queue (roadmap Sprint 7, milestone M2).
+**Scope (in / out):**
+- In (Full Sprint 7): lease columns on work_units, work_unit_attempts table, lazy sweep-on-claim, lease-issue on claim, attempt outcomes (completed/failed/expired), duplicate resubmission 200 vs late-result 409, worker POST claim + 409 tolerance + --execution-delay, quick-reference.md.
+- Out: retry policy tuning/backoff, redundant execution (S23), scheduler scoring (S31).
+**Exit condition (verbatim from roadmap):** Start a Job, kill one Worker during execution, and confirm its unfinished Work Units are eventually completed by the other Worker.
+**Changes:**
+- Coordinator: models/work_unit.py (+lease_id/lease_worker_id/started_at/expires_at/attempt_number), models/attempt.py, config +LEASE_DURATION_SECONDS=60, services/work.py (claim issues lease + attempt row; _sweep_expired_leases on every claim; submit closes attempts, clears leases, raises Conflict on late results), api/work.py (POST claim; 409 mapping), db additive migration (version stays 0.1.0-sprint6 — no protocol shape change this sprint)
+- Worker: work.py claim→POST + 409→already_completed, main.py --execution-delay knob
+- tests: test_leasing.py (6), test_work.py claims→POST, worker 409 test
+- NEW docs: quick-reference.md (two-PC setup, commands, env table, troubleshooting)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 98 passed
+- `python -m pytest apps/coordinator/tests apps/worker/tests` (random order) → 98 passed
+- Live M2 (lease 4s): A --execution-delay 8s + B normal, job 4x1; kill A mid-run -> B completes all: status **completed**, aggregate **final=10**; DB shows unit attempt 1 (A) `expired` -> attempt 2 (B) `completed` — pass
+**Decisions:**
+- Lazy sweep on claim instead of a background reaper (prototype: no timers/threads on the coordinator; sweep cost is one indexed query).
+- Attempt history is forever (audit + Sprint 27 accounting); lease visibility is the `work_units` columns (hot path).
+- 409 only on *conflicting* late results; identical resubmits stay 200 idempotent (worker 409-tolerant logs + moves on).
+- `--execution-delay` is a failure-test knob only (implementation-guide §16 deliberate failure tests), not production behavior.
+**Next steps:**
+- Sprint 8: result verification hardening (challenge/known-answer units, selective duplication).
+- Two-machine E2E still pending (see quick-reference.md).
 - Two-machine E2E still pending (laptop on LAN, `python apps/worker/worker/main.py --coordinator-url http://192.168.4.68:8000 --loop`).

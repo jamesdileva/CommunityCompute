@@ -48,29 +48,29 @@ def _register(client: TestClient, worker_id: str) -> None:
 def test_claim_returns_oldest_queued_unit(client: TestClient):
     job_id = _submit(client, total=3, chunk=1)
     _register(client, WORKER_A)
-    a = client.get(f"/work/{WORKER_A}").json()
+    a = client.post(f"/work/{WORKER_A}/claim").json()
     assert a["work_unit_id"] and a["range_start"] == 1 and a["range_end"] == 1
     assert a["job_id"] == job_id
-    b = client.get(f"/work/{WORKER_A}").json()
+    b = client.post(f"/work/{WORKER_A}/claim").json()
     assert b["range_start"] == 2
     assert a["work_unit_id"] != b["work_unit_id"]  # no double-assignment
-    assert client.get(f"/work/{WORKER_A}").json()["range_start"] == 3
-    assert client.get(f"/work/{WORKER_A}").json() == {}  # queue empty
+    assert client.post(f"/work/{WORKER_A}/claim").json()["range_start"] == 3
+    assert client.post(f"/work/{WORKER_A}/claim").json() == {}  # queue empty
 
 
 def test_claim_distributes_across_workers(client: TestClient):
     _submit(client, total=2, chunk=1)
     _register(client, WORKER_A)
     _register(client, WORKER_B)
-    a = client.get(f"/work/{WORKER_A}").json()
-    b = client.get(f"/work/{WORKER_B}").json()
+    a = client.post(f"/work/{WORKER_A}/claim").json()
+    b = client.post(f"/work/{WORKER_B}/claim").json()
     assert a["work_unit_id"] != b["work_unit_id"]
 
 
 def test_unit_status_becomes_completed(client: TestClient):
     _submit(client, total=1, chunk=1)
     _register(client, WORKER_A)
-    unit = client.get(f"/work/{WORKER_A}").json()
+    unit = client.post(f"/work/{WORKER_A}/claim").json()
     resp = client.post(f"/work/{unit['work_unit_id']}/result", json=_result_body(unit, WORKER_A))
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
@@ -82,7 +82,7 @@ def test_unit_status_becomes_completed(client: TestClient):
 def test_corrupted_result_is_rejected(client: TestClient):
     _submit(client, total=2, chunk=1)
     _register(client, WORKER_A)
-    unit = client.get(f"/work/{WORKER_A}").json()  # range 1..1, correct value 1
+    unit = client.post(f"/work/{WORKER_A}/claim").json()  # range 1..1, correct value 1
     body = _result_body(unit, WORKER_A, value=999)  # wrong
     resp = client.post(f"/work/{unit['work_unit_id']}/result", json=body)
     assert resp.status_code == 422
@@ -98,14 +98,14 @@ def test_hash_op_verification(client: TestClient):
 
     _submit(client, total=1, chunk=1, op="hash")
     _register(client, WORKER_A)
-    unit = client.get(f"/work/{WORKER_A}").json()
+    unit = client.post(f"/work/{WORKER_A}/claim").json()
     expected = hashlib.sha256(b"1:1").hexdigest()
     good = _result_body(unit, WORKER_A, value=expected,
                         output_hash=hashlib.sha256(f"hash:{expected}".encode()).hexdigest())
     assert client.post(f"/work/{unit['work_unit_id']}/result", json=good).status_code == 200
 
     _submit(client, total=1, chunk=1, op="hash")
-    unit2 = client.get(f"/work/{WORKER_A}").json()
+    unit2 = client.post(f"/work/{WORKER_A}/claim").json()
     bad_hash = _result_body(unit2, WORKER_A, value=expected, output_hash="deadbeef")
     assert client.post(f"/work/{unit2['work_unit_id']}/result", json=bad_hash).status_code == 422
 
@@ -113,7 +113,7 @@ def test_hash_op_verification(client: TestClient):
 def test_duplicate_result_is_idempotent(client: TestClient):
     _submit(client, total=1, chunk=1)
     _register(client, WORKER_A)
-    unit = client.get(f"/work/{WORKER_A}").json()
+    unit = client.post(f"/work/{WORKER_A}/claim").json()
     body = _result_body(unit, WORKER_A)
     assert client.post(f"/work/{unit['work_unit_id']}/result", json=body).status_code == 200
     assert client.post(f"/work/{unit['work_unit_id']}/result", json=body).status_code == 200
@@ -132,9 +132,9 @@ def test_job_aggregation_final_sum(client: TestClient):
     _register(client, WORKER_B)
     for _ in range(10):
         wid = WORKER_A if _ % 2 == 0 else WORKER_B
-        unit = client.get(f"/work/{wid}").json()
+        unit = client.post(f"/work/{wid}/claim").json()
         if not unit:
-            unit = client.get(f"/work/{WORKER_A}").json()
+            unit = client.post(f"/work/{WORKER_A}/claim").json()
         assert client.post(
             f"/work/{unit['work_unit_id']}/result", json=_result_body(unit, wid)
         ).status_code == 200
@@ -147,7 +147,7 @@ def test_job_aggregation_final_sum(client: TestClient):
 def test_claim_rejects_unknown_protocol_version(client: TestClient):
     _submit(client, total=1, chunk=1)
     _register(client, WORKER_A)
-    unit = client.get(f"/work/{WORKER_A}").json()
+    unit = client.post(f"/work/{WORKER_A}/claim").json()
     bad = {**_result_body(unit, WORKER_A), "protocol_version": "0.0.1-ancient"}
     # coordinator accepts (it validates the value, not the bump), worker would
     # have refused; verified end-to-end in worker executor tests.

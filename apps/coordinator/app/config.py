@@ -1,8 +1,8 @@
-"""Coordinator configuration (Sprint 1; Sprint 4 adds heartbeat timeout).
+"""Coordinator configuration (Sprint 1; S4 heartbeat timeout; S7 lease duration).
 
 All values overridable via environment / `.env` (never commit `.env`).
 Env names: COORDINATOR_HOST, COORDINATOR_PORT, DATABASE_URL, LOG_LEVEL,
-HEARTBEAT_TIMEOUT_SECONDS.
+HEARTBEAT_TIMEOUT_SECONDS, LEASE_DURATION_SECONDS.
 """
 
 from functools import lru_cache
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./communitycompute.db"
     log_level: str = "info"
     heartbeat_timeout_seconds: int = 60
+    lease_duration_seconds: int = 60
 
 
 @lru_cache

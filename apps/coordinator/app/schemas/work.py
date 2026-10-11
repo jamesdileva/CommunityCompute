@@ -1,4 +1,6 @@
-"""Work API schemas (Sprint 6): assignment out, result in."""
+"""Work API schemas (Sprint 6): assignment out, result in; Sprint 7 adds lease fields."""
+
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +17,9 @@ class WorkAssignment(BaseModel):
     range_start: int
     range_end: int
     params: dict = Field(default_factory=dict)
+    lease_id: str | None = None
+    lease_expires_at: datetime | None = None
+    attempt_number: int = 1
 
 
 class WorkResult(BaseModel):

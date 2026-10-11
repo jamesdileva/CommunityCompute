@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 6 — M1: first distributed workload (claim → execute → verify → aggregate). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 7 — M2: work-unit leasing (expired work requeued, kill-worker retry). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 

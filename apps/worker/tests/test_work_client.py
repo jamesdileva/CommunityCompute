@@ -1,32 +1,33 @@
-"""Sprint 6: work claim/submit client + worker work cycle behavior."""
+"""Sprint 6/7: work claim/submit client + worker work cycle behavior."""
 
 import httpx
 import pytest
 
 import worker.main as main_mod
-from worker.main import parse_args, run_worker
 from worker.work import claim_work, submit_result
 
 
 def test_claim_work_returns_none_when_empty(monkeypatch):
-    def fake_get(url, timeout=None):
-        request = httpx.Request("GET", url)
+    def fake_post(url, timeout=None):
+        assert url.endswith("/claim")
+        request = httpx.Request("POST", url)
         return httpx.Response(200, json={}, request=request)
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
     assert claim_work("http://127.0.0.1:8000", "w1") is None
 
 
 def test_claim_work_returns_assignment(monkeypatch):
     assignment = {"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
                   "job_id": "j1", "workload_type": "hello_compute",
-                  "range_start": 1, "range_end": 10, "params": {"op": "sum"}}
+                  "range_start": 1, "range_end": 10, "params": {"op": "sum"},
+                  "lease_id": "l1", "attempt_number": 1}
 
-    def fake_get(url, timeout=None):
-        request = httpx.Request("GET", url)
+    def fake_post(url, timeout=None):
+        request = httpx.Request("POST", url)
         return httpx.Response(200, json=assignment, request=request)
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
     got = claim_work("http://127.0.0.1:8000", "w1")
     assert got["work_unit_id"] == "u1"
 
@@ -49,6 +50,20 @@ def test_submit_result_rejection_raises(monkeypatch):
     monkeypatch.setattr(httpx, "post", fake_post)
     with pytest.raises(httpx.HTTPStatusError):
         submit_result("http://127.0.0.1:8000", "u1", {"status": "completed", "value": -1})
+
+
+def test_submit_result_409_is_handled(monkeypatch):
+    """Sprint 7: a late result for an already-completed unit returns, never raises."""
+
+    def fake_post(url, json=None, timeout=None):
+        request = httpx.Request("POST", url)
+        return httpx.Response(409, json={"error": "already completed by another worker"},
+                              request=request)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    got = submit_result("http://127.0.0.1:8000", "u1",
+                        {"status": "completed", "value": 55})
+    assert got == {"status": "already_completed"}
 
 
 def test_work_cycle_executes_and_submits(monkeypatch):
