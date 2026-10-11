@@ -30,7 +30,8 @@ from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.schemas.work import WorkAssignment, WorkResult
 from app.services.compat import check
-from app.services.workloads.hello_compute import compute as hello_compute, output_hash
+from app.services.workloads import expected as workload_expected
+from app.services.workloads import output_hash as workload_output_hash
 
 log = logging.getLogger("coordinator")
 
@@ -198,6 +199,7 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
             return True, None, existing  # idempotent duplicate of the verified result
         raise Conflict("work unit already completed by another worker")
 
+    workload_type = job.workload_type if job else DEFAULT_WORKLOAD_TYPE
     op = (job.params or {}).get("op", "sum") if job else "sum"
     original_value = None
     if unit.verify_of is not None:
@@ -205,7 +207,7 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
         # original, not re-derivation of the expectation.
         original_result = db.get(Result, unit.verify_of)
         original_value = original_result.value if original_result else None
-    ok, kind, error = _classify(payload, unit, op, original_value)
+    ok, kind, error = _classify(payload, unit, workload_type, op, original_value)
 
     execution_ms = _as_float(payload.metrics.get("execution_ms"))
     result = existing or Result(work_unit_id=work_unit_id)
@@ -242,7 +244,7 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
     return ok, (None if ok else (error or "rejected")), result
 
 
-def _classify(payload: WorkResult, unit: WorkUnit, op: str,
+def _classify(payload: WorkResult, unit: WorkUnit, workload_type: str, op: str,
               original_value: object = None) -> tuple[bool, str | None, str | None]:
     """Classify a result: (accepted, failure_kind, message).
 
@@ -258,20 +260,31 @@ def _classify(payload: WorkResult, unit: WorkUnit, op: str,
                 f"verification disagreement: confirmed={original_value!r}, "
                 f"duplicate={payload.value!r}"
             )
-        if payload.output_hash is not None and payload.output_hash != output_hash(op, payload.value):
+        if payload.output_hash is not None and payload.output_hash != _hash_of(
+            workload_type, op, payload.value
+        ):
             return False, HASH_MISMATCH, "output hash mismatch (corrupted result)"
         return True, None, None
     try:
-        expected = hello_compute(op, unit.range_start, unit.range_end)
+        expected = workload_expected(workload_type, op, unit.range_start, unit.range_end)
     except ValueError as exc:
         return False, UNSUPPORTED_WORKLOAD, str(exc)
     if payload.value != expected:
         return False, VALUE_MISMATCH, (
             f"value mismatch: expected {expected!r}, got {payload.value!r}"
         )
-    if payload.output_hash is not None and payload.output_hash != output_hash(op, payload.value):
+    if payload.output_hash is not None and payload.output_hash != _hash_of(
+        workload_type, op, payload.value
+    ):
         return False, HASH_MISMATCH, "output hash mismatch (corrupted result)"
     return True, None, None
+
+
+def _hash_of(workload_type: str, op: str, value: object) -> str:
+    try:
+        return workload_output_hash(workload_type, op, value)
+    except ValueError:
+        return ""  # unknown workload: hash check is meaningless (value check governs)
 
 
 def _sampled(unit: WorkUnit, rate: float) -> bool:

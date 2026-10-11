@@ -68,7 +68,17 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # Telemetry + throttling (Sprint 12): one sample per tick; policy re-read each tick
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --interval 2 --heartbeat-interval 20
 # GET /workers/{id}            -> status: online | throttled | paused | offline
-# GET /workers/{id}/resources  -> newest samples (cpu %, ram avail/used, gpu %, vram MB, temp)
+# Two workload types through the same scheduler (Sprint 13; no branching)
+python -c @"
+import httpx
+b = 'http://127.0.0.1:8000/jobs'
+def sub(t, p, n):
+    return httpx.post(b, json={'workload_type': t, 'params': p,
+        'total_units': n, 'chunk_size': 1}, timeout=5).json()['id']
+print('hello_compute:', sub('hello_compute', {'op': 'sum'}, 4))
+print('stats_range  :', sub('stats_range', {}, 3))
+"@
+# GET /workers/{id} -> capabilities.runtimes lists what the worker can execute
 
 # Submit a job + inspect (PowerShell inline)
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':20,'chunk_size':1}, timeout=5).json()['id'])"
@@ -90,6 +100,21 @@ print('runtime:', sub({'runtime': 'hello_compute'}))
 print('os   :', sub({'os': 'Windows'}))
 "@
 # unknown requirement keys are rejected 422 (typos fail loudly at submit)
+
+# Two workload types through the same scheduler (Sprint 13; no branching)
+python -c @"
+import httpx
+b = 'http://127.0.0.1:8000/jobs'
+def sub(t, p, n):
+    return httpx.post(b, json={'workload_type': t, 'params': p,
+        'total_units': n, 'chunk_size': 1}, timeout=5).json()['id']
+print('hello_compute:', sub('hello_compute', {'op': 'sum'}, 4))
+print('stats_range  :', sub('stats_range', {}, 3))
+"@
+# GET /workers/{id} -> capabilities.runtimes lists what the worker can execute
+# GET /workers/{id}            -> status: online | throttled | paused | offline
+# GET /workers/{id}/resources  -> newest telemetry samples (cpu %, ram, gpu %, vram, temp)
+
 # Worker tiers + compatibility explanations (Sprint 10)
 # GET /workers/{id}                    -> tiers {gpu, cpu, ram} = H1/H2/H3 or unknown
 # GET /jobs/{id}/compatibility/{wid}   -> {compatible, reason, checks:[{dimension,need,have,passed}]}

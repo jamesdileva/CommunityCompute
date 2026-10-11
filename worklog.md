@@ -299,7 +299,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Dropped unique constraint needs a dev-DB reset (documented in quick-reference); creation code still guarantees one original per sequence.
 - No worker changes: the executor's deterministic math already matched; verification lives server-side by design.
 **Next steps:**
-- Sprint 12: resource monitoring (temperature/telemetry richness, availability transitions) (done below).
+- Sprint 13: workload adapter system (registry + lifecycle) — prepare for real AI workloads (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 13: Workload Adapter System
+**Goal:** Scheduler separated from workload implementation (roadmap Sprint 13).
+**Scope (in / out):**
+- In (Full Sprint 13): WorkloadExecutor interface (metadata, can_execute, prepare/execute/verify/cleanup), worker registry + run_unit lifecycle runner, hello-compute refactored onto the interface, second workload stats_range (both sides), coordinator verification dispatch via workload registry.
+- Out: embeddings/image executors (S14), model cache (S15), sandboxing (S22).
+**Exit condition (verbatim from roadmap):** Two different workload implementations run through the same scheduler without scheduler-specific branching.
+**Changes:**
+- Worker: worker/execution/executor.py (interface + lifecycle runner + ExecutorMetadata), registry.py (executor_for/list_executors/supported_runtimes/run_unit), hello_compute.py (interface impl; public compute/output_hash unchanged), stats_range.py (new workload, dict payload, own verify), main.py run_unit wiring, capabilities discover → runtimes from registry
+- Coordinator: services/workloads/__init__.py (expected()/output_hash() dispatch), services/workloads/stats_range.py (reference), services/work.py (_classify dispatches by workload_type)
+- tests: test_executor.py (rewritten: 16), test_workload_registry.py (6)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 207 passed
+- random order → 207 passed
+- Live: worker advertises runtimes [hello_compute, stats_range]; both job types claimed+executed+**verified** through the same endpoint (values 1, 2 scalar and {'count':1,...} dicts); both jobs draining (snapshot at +12s: 2/4 and 2/3, zero failures) — pass
+**Decisions:**
+- Lifecycle order **prepare → validate → execute → verify → cleanup** (verify before cleanup: verifier may need scratch state) — first draft had cleanup in finally-before-verify; test caught it.
+- Stage failures map to failed UnitResults with distinct prefixes (prepare failed / rejected / execution error / verify crashed) → sprint-8 failure kinds stay precise.
+- Executor metadata declares requirements (cpu_cores, gpu...) enforced in can_execute against optional capabilities; scheduler-side compat (S9) remains the routing authority.
+- Second workload needed new coordinator reference math (stats_range); unknown types already flow to unsupported_workload (422) unchanged.
+**Next steps:**
+- Sprint 14: first real AI workload (embeddings recommended) through this same pipeline.
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---

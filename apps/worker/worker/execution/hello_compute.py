@@ -1,15 +1,12 @@
-"""Workload execution (Sprint 6): deterministic hello-compute + fail-closed registry.
+"""hello-compute workload (Sprints 6-13): deterministic scalar results.
 
-The executor validates before executing: protocol version, known workload
-type, sane range, and payload sanity. Anything it doesn't understand is
-rejected (fail closed — architecture §9).
+Refactored onto the WorkloadExecutor interface in Sprint 13; the public
+`compute`/`output_hash` functions stay stable (tests + coordinator parity).
 """
 
 import hashlib
-import time
-from dataclasses import dataclass
 
-from packages.protocol import version_supported
+from worker.execution.executor import ExecutorMetadata, UnitResult, WorkloadExecutor
 
 
 def compute(op: str, range_start: int, range_end: int) -> int | str:
@@ -25,70 +22,31 @@ def output_hash(op: str, value: int | str) -> str:
     return hashlib.sha256(f"{op}:{value}".encode()).hexdigest()
 
 
-class RejectedUnit(Exception):
-    """Raised when a unit fails validation — worker reports failure upward."""
-
-
-@dataclass
-class UnitResult:
-    status: str  # "completed" | "failed"
-    value: object | None = None
-    output_hash: str | None = None
-    error: str | None = None
-    execution_ms: float | None = None
-
-
-class HelloComputeExecutor:
+class HelloComputeExecutor(WorkloadExecutor):
     workload_type = "hello_compute"
 
-    def can_execute(self, assignment: dict) -> tuple[bool, str | None]:
-        if not version_supported(assignment.get("protocol_version")):
-            return False, f"unsupported protocol version {assignment.get('protocol_version')!r}"
-        if assignment.get("workload_type") != self.workload_type:
-            return False, f"unknown workload type {assignment.get('workload_type')!r}"
-        start, end = assignment.get("range_start"), assignment.get("range_end")
-        if not isinstance(start, int) or not isinstance(end, int):
-            return False, "range must be integers"
-        if start < 1 or end < start:
-            return False, f"invalid range {start}..{end}"
-        op = (assignment.get("params") or {}).get("op", "sum")
-        if op not in {"sum", "hash"}:
-            return False, f"unsupported op {op!r}"
-        return True, None
+    @property
+    def metadata(self) -> ExecutorMetadata:
+        return ExecutorMetadata(
+            workload_type=self.workload_type,
+            version="1",
+            description="deterministic deterministic sum/hash over integer ranges",
+            requirements={},  # runs anywhere
+            deterministic=True,
+        )
+
+    def valid_params(self, params: dict) -> bool:
+        return (params or {}).get("op", "sum") in {"sum", "hash"}
 
     def execute(self, assignment: dict) -> UnitResult:
-        ok, reason = self.can_execute(assignment)
-        if not ok:
-            return UnitResult(status="failed", error=f"rejected: {reason}")
         op = (assignment.get("params") or {}).get("op", "sum")
-        started = time.perf_counter()
         try:
             value = compute(op, assignment["range_start"], assignment["range_end"])
-        except Exception as exc:  # noqa: BLE001 - any failure must be reported, not crash
-            return UnitResult(status="failed", error=f"execution error: {exc}")
-        elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+        except ValueError as exc:
+            return UnitResult(status="failed", error=str(exc))
         return UnitResult(
             status="completed",
             value=value,
             output_hash=output_hash(op, value),
-            execution_ms=elapsed_ms,
+            execution_ms=None,  # filled by the runner's timer
         )
-
-
-_REGISTRY = {HelloComputeExecutor.workload_type: HelloComputeExecutor()}
-
-
-def supported_runtimes() -> list[str]:
-    """Workload types this worker can execute (advertised in capabilities, Sprint 9)."""
-    return sorted(_REGISTRY)
-
-
-def execute_unit(assignment: dict) -> UnitResult:
-    """Dispatch to a registered executor; unknown types fail closed."""
-    executor = _REGISTRY.get(assignment.get("workload_type", ""))
-    if executor is None:
-        return UnitResult(
-            status="failed",
-            error=f"no executor for workload type {assignment.get('workload_type')!r}",
-        )
-    return executor.execute(assignment)

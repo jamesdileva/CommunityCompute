@@ -37,7 +37,7 @@ from worker.registration import build_payload, register_worker  # noqa: E402
 from worker.capabilities.discover import discover_capabilities  # noqa: E402
 from worker.capabilities.client import report_capabilities  # noqa: E402
 from worker.heartbeat import build_heartbeat_payload, send_heartbeat  # noqa: E402
-from worker.execution.hello_compute import execute_unit  # noqa: E402
+from worker.execution.registry import run_unit  # noqa: E402
 from worker.work import claim_work, submit_result  # noqa: E402
 from worker.policy.schema import AvailabilityPolicy  # noqa: E402
 from worker.policy.engine import evaluate as evaluate_policy  # noqa: E402
@@ -187,7 +187,7 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
     unit_id = assignment.get("work_unit_id")
     if execution_delay > 0:
         time.sleep(execution_delay)  # simulated slow work (failure-test knob)
-    result = execute_unit(assignment)  # validates, then computes (fail closed)
+    result = run_unit(assignment)  # validates, computes, self-verifies (fail closed)
     print(
         f"[worker {worker_id}] unit {unit_id} {assignment.get('range_start')}.."
         f"{assignment.get('range_end')} -> {result.status}"

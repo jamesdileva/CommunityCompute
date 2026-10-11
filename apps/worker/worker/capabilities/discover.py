@@ -7,7 +7,7 @@ from worker.capabilities.gpu.registry import detect_gpus
 from worker.capabilities.os_info import discover_os
 from worker.capabilities.ram import discover_ram
 from worker.capabilities.schema import CapabilityProfile
-from worker.execution.hello_compute import supported_runtimes
+from worker.execution.registry import supported_runtimes
 
 
 def discover_capabilities() -> CapabilityProfile:
