@@ -20,6 +20,8 @@ build/
 
 # Worker identity — per-machine, never commit
 .worker_id*
+# Contributor policy — per-machine, never commit
+policy.json
 .worker-id
 worker_id.json
 

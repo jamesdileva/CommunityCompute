@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.models.worker import OFFLINE, ONLINE, Worker
 
-# States set explicitly (not derived). Unknown until first heartbeat/registration.
+# States set explicitly (not derived): paused by contributor policy (Sprint 11),
+# disabled by an operator. Unknown until first heartbeat/registration.
 _EXPLICIT = {"paused", "disabled"}
 
 

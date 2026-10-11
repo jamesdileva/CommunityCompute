@@ -299,7 +299,34 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Dropped unique constraint needs a dev-DB reset (documented in quick-reference); creation code still guarantees one original per sequence.
 - No worker changes: the executor's deterministic math already matched; verification lives server-side by design.
 **Next steps:**
-- Sprint 10: hardware tiers + capability explanation (scheduler says why) (done below).
+- Sprint 11: contributor policy engine (idle-only, CPU/GPU %, temperature ceiling, battery, schedule, pause) (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 11: Contributor Policy Engine
+**Goal:** Contributor controls when the machine contributes; conditions trip → stops accepting work (roadmap Sprint 11).
+**Scope (in / out):**
+- In (Full Sprint 11): AvailabilityPolicy schema, machine-state sampler (psutil/nvidia-smi/battery/idle), ordered engine with reasons, persisted policy.json, --pause/--resume/--policy-file CLI, heartbeat availability → coordinator "paused" status, tests.
+- Out: execution-limit enforcement (separate control per guide §18, later), fullscreen/process detection (guide §17 says don't), dashboard controls (S16), GPU temp on non-NVIDIA (undetectable → skips? no: ceiling + unknown temp denies).
+**Exit condition (verbatim from roadmap):** When a configured condition occurs, the Worker stops accepting new work. Pressing Pause immediately prevents additional work from being assigned.
+**Changes:**
+- Worker: worker/policy/{schema,state,engine,store}.py; main.py gates work cycle on policy (denied → no claim), heartbeat carries `available`, pause/resume CLI (exit code 0 before networking)
+- Coordinator: Heartbeat.available (extra field, backwards compatible); heartbeat sets status online|paused; availability service treats `paused` as explicit
+- tests: test_policy_engine.py (19), test_policy_store.py (6), test_policy_wiring.py (5), heartbeat availability cases (4)
+- .gitignore +policy.json (per-machine, never committed)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 178 passed
+- random order → 178 passed
+- Live: heartbeat available=false → worker `paused`; available=true → `online`; missing field → derived online — pass
+- Live gate: worker with paused policy prints "holding off work: paused by contributor" and claims nothing (unit test + manual) — pass
+**Decisions:**
+- Fail closed on unknown signals: idle-only + undetectable idle denies; temperature ceiling + undetectable temp denies (never blind-run hot).
+- Midnight-wrap schedule windows handled explicitly (bug caught by test: wrap branch let every hour through).
+- Heartbeat is backwards compatible: workers without `available` keep liveness-derived status; pause is explicit-only.
+- Worker gating is the primary control (coordinator `paused` is informational, not an enforcement point) — worker never claims while denied.
+**Next steps:**
+- Sprint 12: resource monitoring (temperature/telemetry richness, availability transitions).
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---

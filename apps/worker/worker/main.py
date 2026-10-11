@@ -39,6 +39,15 @@ from worker.capabilities.client import report_capabilities  # noqa: E402
 from worker.heartbeat import build_heartbeat_payload, send_heartbeat  # noqa: E402
 from worker.execution.hello_compute import execute_unit  # noqa: E402
 from worker.work import claim_work, submit_result  # noqa: E402
+from worker.policy.schema import AvailabilityPolicy  # noqa: E402
+from worker.policy.engine import evaluate as evaluate_policy  # noqa: E402
+from worker.policy.state import collect_state  # noqa: E402
+from worker.policy.store import (  # noqa: E402
+    load_policy,
+    policy_path,
+    save_policy,
+    set_paused,
+)
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -69,6 +78,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0.0,
         help="Simulate slow work: seconds to sleep before computing (failure tests)",
     )
+    p.add_argument("--policy-file", default=None, help="Availability policy JSON path")
+    pause = p.add_mutually_exclusive_group()
+    pause.add_argument("--pause", action="store_true", help="Persist paused=true and exit")
+    pause.add_argument("--resume", action="store_true", help="Persist paused=false and exit")
     return p.parse_args(argv)
 
 
@@ -93,9 +106,13 @@ def _attempt_report_capabilities(coordinator_url: str, worker_id: str, timeout: 
         print(f"[worker {worker_id}] capabilities FAILED: {exc}", flush=True)
 
 
-def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float) -> None:
+def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float,
+                       policy: AvailabilityPolicy | None = None) -> None:
     try:
         payload = build_heartbeat_payload(worker_id)
+        if policy is not None:
+            available, _reason = _availability(policy)
+            payload["available"] = available
         body = send_heartbeat(coordinator_url, payload, timeout=timeout)
         r = payload["resources"]
         print(
@@ -108,9 +125,29 @@ def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float) -> 
         print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
 
 
+def _policy_file(args: argparse.Namespace) -> Path:
+    if args.policy_file:
+        return Path(args.policy_file)
+    return policy_path(get_worker_id_file(args.worker_id_file))
+
+
+def _availability(policy: AvailabilityPolicy) -> tuple[bool, str]:
+    """Policy gate: sample the machine, evaluate. Never raises."""
+    try:
+        return evaluate_policy(policy, collect_state())
+    except Exception as exc:  # noqa: BLE001 - gate failure must not silence the worker
+        return True, f"policy check failed ({exc}); defaulting to available"
+
+
 def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
+                        policy: AvailabilityPolicy | None = None,
                         execution_delay: float = 0.0) -> None:
     """Claim one unit, execute, submit. All failures logged, never fatal."""
+    if policy is not None:
+        available, reason = _availability(policy)
+        if not available:
+            print(f"[worker {worker_id}] holding off work: {reason}", flush=True)
+            return
     try:
         assignment = claim_work(coordinator_url, worker_id, timeout=timeout)
     except Exception as exc:  # noqa: BLE001 - claim failure: retry next tick
@@ -147,7 +184,11 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
 
 
 def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
-    """Startup: register + capabilities (once). Then loop: heartbeat → work (Sprints 4/6)."""
+    """Startup: register + capabilities (once). Then loop: heartbeat → work (Sprints 4/6).
+
+    Policy gate (Sprint 11): each work cycle consults the contributor's
+    availability policy first; when it denies, no work is claimed.
+    """
     coordinator_url = get_coordinator_url(args.coordinator_url)
     worker_id = get_or_create_worker_id(get_worker_id_file(args.worker_id_file))
     payload = build_payload(worker_id)
@@ -156,6 +197,19 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
         f"(id file: {get_worker_id_file(args.worker_id_file)})",
         flush=True,
     )
+
+    policy_file = _policy_file(args)
+    if args.pause:
+        set_paused(policy_file, True)
+        print(f"[worker] paused in {policy_file}", flush=True)
+        return 0
+    if args.resume:
+        set_paused(policy_file, False)
+        print(f"[worker] resumed in {policy_file}", flush=True)
+        return 0
+    policy = load_policy(policy_file)
+    if policy.paused:
+        print(f"[worker {worker_id}] policy: paused (pass --resume to unpause)", flush=True)
 
     if not args.loop:
         result = _attempt_register(coordinator_url, payload, args.timeout)
@@ -181,11 +235,11 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
                 registered = True
                 print(f"[worker {worker_id}] registered: {result.get('id')}", flush=True)
             else:
-                _attempt_heartbeat(coordinator_url, worker_id, args.timeout)
+                _attempt_heartbeat(coordinator_url, worker_id, args.timeout, policy=policy)
                 if not args.no_work:
                     _attempt_work_cycle(
                         coordinator_url, worker_id, args.timeout,
-                        execution_delay=args.execution_delay,
+                        policy=policy, execution_delay=args.execution_delay,
                     )
             stop_event.wait(args.interval)
     except KeyboardInterrupt:

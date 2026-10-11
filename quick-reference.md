@@ -52,6 +52,19 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --no-work
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --execution-delay 8
 
+# Contributor policy (Sprint 11): policy.json beside the worker id file
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --pause     # stop accepting
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --resume    # accept again
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --policy-file mypol.json
+# Example policy.json (all optional; unknown signals fail closed):
+# {
+#   "idle_only": true, "idle_threshold_seconds": 180,
+#   "max_cpu_percent": 80, "max_gpu_percent": 50,
+#   "temperature_ceiling_c": 70, "battery_policy": "plugged_only",
+#   "allowed_hours": {"start_hour": 9, "end_hour": 23, "days": [0,1,2,3,4]}
+# }
+# → paused workers report available:false in heartbeats; GET /workers shows "paused"
+
 # Submit a job + inspect (PowerShell inline)
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':20,'chunk_size':1}, timeout=5).json()['id'])"
 python -c "import httpx; d = httpx.get('http://127.0.0.1:8000/jobs/<id>', timeout=5).json(); print(d['status'], d['counts'], d['aggregate'])"

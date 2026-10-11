@@ -21,6 +21,8 @@ class ResourceSnapshot(BaseModel):
 class Heartbeat(BaseModel):
     worker_id: UUID
     resources: ResourceSnapshot = Field(default_factory=ResourceSnapshot)
+    # Sprint 11: contributor policy availability. null = worker doesn't report it.
+    available: bool | None = None
 
 
 class HeartbeatResponse(BaseModel):

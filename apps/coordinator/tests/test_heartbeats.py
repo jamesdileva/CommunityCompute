@@ -43,6 +43,41 @@ def test_heartbeat_refreshes_status_and_resources(client: TestClient):
     assert row["ram_available_mb"] == 5000
 
 
+def test_heartbeat_available_false_marks_paused(client: TestClient):
+    wid = str(uuid.uuid4())
+    _register(client, wid)
+    body = {**HB, "worker_id": wid, "available": False}
+    resp = client.post(f"/workers/{wid}/heartbeat", json=body)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "paused"
+    assert {w["id"]: w for w in client.get("/workers").json()}[wid]["status"] == "paused"
+
+
+def test_missing_available_field_falls_back_to_derived_status(client: TestClient):
+    """Old/field-less workers keep liveness derivation; pause is explicit-only."""
+    wid = str(uuid.uuid4())
+    _register(client, wid)
+    assert _beat(client, wid).status_code == 200  # no `available` key at all
+    assert {w["id"]: w for w in client.get("/workers").json()}[wid]["status"] == "online"
+
+
+def test_paused_worker_still_heartbeats_and_resumes(client: TestClient):
+    wid = str(uuid.uuid4())
+    _register(client, wid)
+    client.post(f"/workers/{wid}/heartbeat", json={**HB, "worker_id": wid, "available": False})
+    assert _beat(client, wid).status_code == 200
+    assert client.post(f"/workers/{wid}/heartbeat",
+                       json={**HB, "worker_id": wid, "available": True}).status_code == 200
+    assert {w["id"]: w for w in client.get("/workers").json()}[wid]["status"] == "online"
+
+
+def test_heartbeat_without_available_field_stays_derived(client: TestClient):
+    wid = str(uuid.uuid4())
+    _register(client, wid)
+    assert _beat(client, wid).status_code == 200  # no `available` key at all
+    assert {w["id"]: w for w in client.get("/workers").json()}[wid]["status"] == "online"
+
+
 def test_heartbeat_unknown_worker_404(client: TestClient):
     wid = str(uuid.uuid4())
     assert _beat(client, wid).status_code == 404
