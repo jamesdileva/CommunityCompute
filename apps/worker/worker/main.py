@@ -33,7 +33,7 @@ def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="CreatorLab minimal worker (Sprint 0 ping)")
+    p = argparse.ArgumentParser(description="CommunityCompute minimal worker (Sprint 0 ping)")
     p.add_argument("--coordinator-url", default=None, help="Coordinator base URL")
     p.add_argument("--worker-id-file", default=None, help="Persistent worker ID file")
     p.add_argument("--once", action="store_true", help="Ping once and exit")

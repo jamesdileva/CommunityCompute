@@ -1,10 +1,10 @@
-# AGENTS.md — CreatorLab (Community AI Compute Network)
+# AGENTS.md — CommunityCompute (Community AI Compute Network)
 
 This file guides all agents (and humans) working in this repo. Follow it unless the user explicitly overrides.
 
 ## 1. Project Overview
 
-**CreatorLab** is a community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers. See `docs/architecture.md` for the full vision.
+**CommunityCompute** is a community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers. See `docs/architecture.md` for the full vision.
 
 Core abstraction (must stay stable as the network grows):
 
@@ -29,7 +29,7 @@ Non-goals for prototype: distributed LLM training/inference, crypto, real-money 
 ## 2. Repository Structure (target, per architecture §23)
 
 ```text
-CreatorLab / community-ai-compute/
+CommunityCompute / community-ai-compute/
 ├── apps/
 │   ├── coordinator/      # FastAPI + Scheduler + SQLite (control plane)
 │   │   ├── app/{api,scheduler,services,models,schemas,db}/ + main.py
@@ -75,7 +75,7 @@ Every sprint follows **Plan → Scope → Implement → Verify → Commit+Push**
    - New code requires new tests: capability detection, compat matching, policy engine, work-unit creation, state transitions, result verification.
    - Failure tests where roadmap demands them (kill worker, drop network, restart coordinator, duplicate/expired/malformed payloads).
    - Record commands + results in `worklog.md`.
-5. **Commit + Push**: only after verification passes. Conventional commits (`feat(sprint-0): ...`, `fix(...)`, `test(...)`, `docs(...)`). Push to `main` on `CreatorLab` GitHub repo. Never commit secrets (`.env`); only `.env.example`.
+5. **Commit + Push**: only after verification passes. Conventional commits (`feat(sprint-0): ...`, `fix(...)`, `test(...)`, `docs(...)`). Push to `main` on `CommunityCompute` GitHub repo. Never commit secrets (`.env`); only `.env.example`.
 
 Update `worklog.md` at sprint start, during key decisions, and at sprint close.
 
@@ -110,8 +110,8 @@ Deterministic workloads first (`hello-compute`: sum/hash over number ranges) so 
 
 ## 8. GitHub Workflow
 
-- Repo: `CreatorLab` (public). Description: "Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers."
-- Remote: `origin` → `github.com/<owner>/CreatorLab`, default branch `main`.
+- Repo: `CommunityCompute` (public). Description: "Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers."
+- Remote: `origin` → `github.com/<owner>/CommunityCompute`, default branch `main`.
 - Flow: `git status` → stage intended files only → `git diff --cached` review → conventional commit → `git push`.
 - PRs only when asked; otherwise direct to `main` per-sprint after verification.
 

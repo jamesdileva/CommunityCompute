@@ -1,1 +1,1 @@
-"""CreatorLab coordinator package (Sprint 0: minimal /health; Sprint 1+: SQLite, scheduler)."""
+"""CommunityCompute coordinator package (Sprint 0: minimal /health; Sprint 1+: SQLite, scheduler)."""

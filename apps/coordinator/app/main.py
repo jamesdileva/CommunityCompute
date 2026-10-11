@@ -12,7 +12,7 @@ from fastapi import FastAPI
 SERVICE = "coordinator"
 VERSION = "0.1.0-sprint0"
 
-app = FastAPI(title="CreatorLab Coordinator", version=VERSION)
+app = FastAPI(title="CommunityCompute Coordinator", version=VERSION)
 
 
 @app.get("/health")

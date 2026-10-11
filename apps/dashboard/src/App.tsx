@@ -12,7 +12,7 @@ export default function App() {
 
   return (
     <main style={{ fontFamily: "system-ui", padding: 24 }}>
-      <h1>CreatorLab Dashboard — Sprint 0 stub</h1>
+      <h1>CommunityCompute Dashboard — Sprint 0 stub</h1>
       <p>Full contributor + network views land in Sprint 16.</p>
       <p>
         Coordinator /health: <code>{health}</code>

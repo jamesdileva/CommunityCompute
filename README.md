@@ -1,4 +1,4 @@
-# CreatorLab — Community-Powered Distributed Compute Network
+# CommunityCompute — Community-Powered Distributed Compute Network
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 

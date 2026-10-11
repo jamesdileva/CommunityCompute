@@ -82,3 +82,21 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Next steps:**
 - Sprint 1: coordinator skeleton (config, SQLite, SQLAlchemy worker table, logging, error handling, /health+DB check).
 - Need Iris Xe laptop: run baseline script + worker `--coordinator-url http://192.168.4.68:8000 --once` for PC B exit proof.
+
+---
+
+## 2026-10-11 — Rename: GitHub repo CreatorLab → CommunityCompute
+**Goal:** Align GitHub repo name with project/folder name `CommunityCompute` (local folder was always correct; `CreatorLab` was just the initial repo-name suggestion).
+**Scope (in / out):**
+- In: `gh repo rename CommunityCompute --yes`; `git remote set-url origin`; replace `CreatorLab`→`CommunityCompute` in AGENTS.md, README, .env.example, coordinator/worker strings, dashboard package + UI stub, protocol docstring; verify tests + push.
+- Out: rewriting history entries below (append-only — old entries keep `CreatorLab` name as record).
+**Changes:**
+- `gh repo rename CommunityCompute --yes -R jamesdileva/CreatorLab` → https://github.com/jamesdileva/CommunityCompute (PUBLIC, same description)
+- Renamed references in 12 files (incl. `creatorlab-dashboard` → `communitycompute-dashboard` in package.json + package-lock.json)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 5 passed
+- `gh repo view jamesdileva/CommunityCompute --json name,description,visibility,url` → CommunityCompute / PUBLIC — pass
+**Decisions:**
+- Old URL `github.com/jamesdileva/CreatorLab` auto-redirects to the new name (GitHub keeps redirect on rename).
+**Next steps:**
+- Sprint 1: coordinator skeleton.
