@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+*.local
+
+# Env / secrets — never commit .env
+.env
+.env.local
+
+# SQLite / local data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Packaging
+*.exe
+*.msi
+*.msix
