@@ -1,4 +1,4 @@
-"""Jobs API (Sprint 5: submit + status + list)."""
+"""Jobs API (Sprint 5 submit/status; Sprint 10: compatibility explanation)."""
 
 import logging
 
@@ -6,9 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models.capability import WorkerCapability
+from app.models.job import Job
 from app.schemas.job import JobCreate, JobOut, JobStatusOut, WorkUnitOut
 from app.services import jobs as job_service
 from app.services import work as work_service
+from app.services.explain import explain
 
 log = logging.getLogger("coordinator")
 
@@ -28,6 +31,18 @@ def submit_job(payload: JobCreate, db: Session = Depends(get_db)) -> JobOut:
 @router.get("", response_model=list[JobOut])
 def list_jobs(db: Session = Depends(get_db)) -> list[JobOut]:
     return [JobOut.model_validate(j) for j in job_service.list_jobs(db)]
+
+
+@router.get("/{job_id}/compatibility/{worker_id}")
+def job_compatibility(job_id: str, worker_id: str, db: Session = Depends(get_db)) -> dict:
+    """Explain why this job's requirements do/don't fit this worker (Sprint 10)."""
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown job"})
+    cap = db.get(WorkerCapability, worker_id)
+    if cap is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker (no capabilities)"})
+    return explain(job.requirements, cap.profile)
 
 
 @router.get("/{job_id}", response_model=JobStatusOut)

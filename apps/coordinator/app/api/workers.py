@@ -13,6 +13,7 @@ from app.models.worker import Worker
 from app.schemas.capability import CapabilityProfile
 from app.schemas.worker import WorkerOut, WorkerRegistration
 from app.services.availability import effective_status
+from app.services.tiers import hardware_tiers
 
 log = logging.getLogger("coordinator")
 
@@ -68,7 +69,9 @@ def get_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
 
 def _to_out(worker: Worker, status: str, capabilities: dict | None) -> WorkerOut:
     out = WorkerOut.model_validate(worker)
-    return out.model_copy(update={"status": status, "capabilities": capabilities})
+    tiers = hardware_tiers(capabilities) if capabilities else None
+    return out.model_copy(update={"status": status, "capabilities": capabilities,
+                                  "tiers": tiers})
 
 
 @router.post("/{worker_id}/capabilities", response_model=CapabilityProfile)

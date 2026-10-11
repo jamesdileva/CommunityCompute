@@ -72,6 +72,16 @@ print('runtime:', sub({'runtime': 'hello_compute'}))
 print('os   :', sub({'os': 'Windows'}))
 "@
 # unknown requirement keys are rejected 422 (typos fail loudly at submit)
+# Worker tiers + compatibility explanations (Sprint 10)
+# GET /workers/{id}                    -> tiers {gpu, cpu, ram} = H1/H2/H3 or unknown
+# GET /jobs/{id}/compatibility/{wid}   -> {compatible, reason, checks:[{dimension,need,have,passed}]}
+python -c "import httpx; print(httpx.get('http://127.0.0.1:8000/workers/<wid>', timeout=5).json()['tiers'])"
+
+# Hardware tiers (per resource axis, architecture §5)
+#   GPU  : <=4GB or integrated/undetected -> H1 · 4-12GB -> H2 · >12GB -> H3 (best GPU wins)
+#   CPU  : <=4 physical cores -> H1 · 5-8 -> H2 · >8 -> H3 (falls back to logical)
+#   RAM  : <=8GB -> H1 · 16-32GB -> H2 · >32GB -> H3
+# Prototype: PC A RX 6400 4GB = gpu H1, cpu H2, ram H2; Iris Xe laptop = all H1
 
 # Job with duplicate verification (fraction 0..1 double-executed by a 2nd worker)
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':2,'chunk_size':1,'verify_sample':1.0}, timeout=5).json()['id'])"

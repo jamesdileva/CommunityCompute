@@ -299,7 +299,31 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Dropped unique constraint needs a dev-DB reset (documented in quick-reference); creation code still guarantees one original per sequence.
 - No worker changes: the executor's deterministic math already matched; verification lives server-side by design.
 **Next steps:**
-- Sprint 9: scheduler compatibility — workload requirements vs capability profiles (heterogeneous routing) (done below).
+- Sprint 10: hardware tiers + capability explanation (scheduler says why) (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 10: Hardware Tiers
+**Goal:** Formalize capability classes; scheduler explains compatibility (roadmap Sprint 10, milestone M3).
+**Scope (in / out):**
+- In (Full Sprint 10): per-axis H1/H2/H3 tiers (GPU/CPU/RAM), tiers on worker detail, `GET /jobs/{id}/compatibility/{wid}` explanation endpoint with per-dimension rows, score stubs exported for Sprint 31 (not wired).
+- Out: score-driven scheduling (S31), benchmarked tiers (guide §9), policy-aware routing (S11), dashboard visualization (S16).
+**Exit condition (verbatim from roadmap):** The two prototype machines receive different hardware capability profiles and the scheduler can explain why a Work Unit is or is not compatible.
+**Changes:**
+- Coordinator: services/tiers.py (gpu_tier/cpu_tier/ram_tier + hardware_tiers; VRAM bands 4/12GB, core bands 4/8, RAM bands 8/32GB; integrated/undetected → H1; best GPU wins), services/explain.py (per-check rows: dimension/need/have/passed/reason), api/jobs.py (compatibility endpoint), api/workers.py (tiers in _to_out), schemas/worker.py (+tiers)
+- tests: test_tiers.py (9), test_explain.py (8)
+- quick-reference.md (tiers + explanation endpoints)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 147 passed
+- random order → 147 passed
+- Live: worker detail tiers `{'gpu': 'H1', 'cpu': 'H2', 'ram': 'H2'}` (RX 6400 4GB/6c/16GB); amd-GPU job → compatible, gpu row passed; nvidia-24GB job → incompatible, precise reason row — pass
+**Decisions:**
+- Boundary convention: `<= floor` → H1 (a 4GB GPU is H1, 12GB is H2) — band label covers the lower bound inclusively; tests + quick-reference document the bands.
+- `gpu: None` distinguishes "has no GPU" from cpu/ram's `unknown` (no data); API surfaces H1/H2/H3/unknown.
+- Score functions exported but unused: Sprint 31 wiring must come after compatibility correctness is proven (roadmap: no scoring until proven).
+**Next steps:**
+- Sprint 11: contributor policy engine (idle-only, CPU/GPU %, temperature ceiling, battery, schedule, pause).
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---
