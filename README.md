@@ -30,7 +30,8 @@ docs/               architecture, implementation-guide, roadmap, baselines
 ```powershell
 # 1. Coordinator (terminal 1)
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir apps/coordinator
-# → http://127.0.0.1:8000/health should return {"status":"ok",...}
+# → http://127.0.0.1:8000/health returns {"status":"ok",...,"database":{"connected":true,...}}
+# DB file communitycompute.db is created on startup (gitignored, dev-local).
 
 # 2. Worker ping (terminal 2)
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once

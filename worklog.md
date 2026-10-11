@@ -99,4 +99,29 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Decisions:**
 - Old URL `github.com/jamesdileva/CreatorLab` auto-redirects to the new name (GitHub keeps redirect on rename).
 **Next steps:**
-- Sprint 1: coordinator skeleton.
+- Sprint 1: coordinator skeleton (done below).
+
+---
+
+## 2026-10-11 — Sprint 1: Coordinator Skeleton
+**Goal:** Central control service; `GET /health` proves alive + SQLite-connected (roadmap Sprint 1).
+**Scope (in / out):**
+- In (Full Sprint 1): config (pydantic-settings), SQLite engine/session/Base, Worker table, basic logging, JSON error envelope, `/health` with `SELECT 1` + worker count; tests for each.
+- Out: registration/heartbeat endpoints (S2/S4), capabilities (S3), jobs/work units (S5), auth/TLS, migrations (dev DB disposable), dashboard changes.
+**Exit condition (verbatim from roadmap):** Opening `/health` proves the coordinator is alive and connected to SQLite.
+**Changes:**
+- New: app/config.py (COORDINATOR_HOST/PORT, DATABASE_URL default `sqlite:///./communitycompute.db`, LOG_LEVEL), app/db/__init__.py (engine with `check_same_thread=False`, SessionLocal, Base, init_db, get_db, check_database), app/models/worker.py (workers: UUID PK, version, hostname, status default `unknown`, first/last seen, updated_at), app/api/health.py (/health router, 503 on DB loss), app/main.py (lifespan init_db, logging, 404/422/500 JSON envelope), placeholder scheduler/services/schemas packages
+- Rewrote: tests/test_health.py (tmp-DB dependency override; health+count+envelope tests); new tests/test_worker_model.py + test_config.py
+- Touched: .env.example (+DATABASE_URL), README (DB note)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 11 passed
+- Live uvicorn: `/health` → 200 `{'status':'ok','database':{'connected':True,'workers':0}}` — pass
+- `GET /nope` → 404 `{'error':{'code':404,...}}` — pass
+- Sprint-0 worker `--once` → ping OK (stable ID `a4228558…`, version string bumped) — pass
+- `communitycompute.db` created on startup; `.tables` → `workers`; `SELECT count(*)` → 0 — pass
+**Decisions:**
+- Target package layout (api/scheduler/services/models/schemas/db) adopted now to avoid later churn; empty packages carry landing-note docstrings.
+- `/health` depends on `get_db` so tests override with tmp DBs — no test pollution of dev DB.
+- No Alembic: dev SQLite file is disposable (gitignored); migrations only when data worth keeping exists.
+**Next steps:**
+- Sprint 2: worker skeleton (config, persistent ID already done, registration endpoint + startup/shutdown).
