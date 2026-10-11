@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+testpaths = ["apps/coordinator/tests", "apps/worker/tests", "tests/integration"]
+pythonpath = ["apps/coordinator", "apps/worker"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.black]
+line-length = 100

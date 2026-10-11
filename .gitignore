@@ -18,6 +18,11 @@ build/
 .env
 .env.local
 
+# Worker identity — per-machine, never commit
+.worker_id
+.worker-id
+worker_id.json
+
 # SQLite / local data
 *.db
 *.db-*

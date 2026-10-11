@@ -1,0 +1,33 @@
+{
+  "collected_at": "2026-10-11T00:05:58.354323+00:00",
+  "hostname": "james",
+  "os": {
+    "system": "Windows",
+    "release": "11",
+    "version": "10.0.26300"
+  },
+  "python": "3.14.3",
+  "cpu": {
+    "arch": "AMD64",
+    "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "logical_cores": 12,
+    "physical_cores": 6,
+    "freq_mhz": {
+      "current": 3600.0,
+      "max": 3600.0
+    }
+  },
+  "ram": {
+    "total_mb": 16258,
+    "available_mb": 603
+  },
+  "gpus": [
+    {
+      "vendor": "amd",
+      "model": "AMD Radeon RX 6400",
+      "vram_mb": 4080,
+      "driver": "32.0.21045.5002",
+      "source": "Win32_VideoController"
+    }
+  ]
+}
