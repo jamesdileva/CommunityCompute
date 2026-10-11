@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 0 — skeleton + minimal runnable coordinator/worker. See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 2 — worker registration; `GET /workers` lists connected workers. See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 
@@ -25,7 +25,7 @@ scripts/            collect_baseline.py, check_lan.py
 docs/               architecture, implementation-guide, roadmap, baselines
 ```
 
-## Sprint 0 quickstart (Windows, Python 3.12+, Node LTS)
+## Sprint 2 quickstart (Windows, Python 3.12+, Node LTS)
 
 ```powershell
 # 1. Coordinator (terminal 1)
@@ -33,13 +33,20 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir apps/coord
 # → http://127.0.0.1:8000/health returns {"status":"ok",...,"database":{"connected":true,...}}
 # DB file communitycompute.db is created on startup (gitignored, dev-local).
 
-# 2. Worker ping (terminal 2)
+# 2. Worker A registers (terminal 2; idempotent — safe to re-run)
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once
 
-# 3. Hardware baseline (this PC)
+# 3. Worker B registers with its own ID file (simulates 2nd PC locally;
+#    on the real 2nd PC just run step 2 against http://192.168.4.68:8000)
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once --worker-id-file .worker_id_b
+
+# 4. Both workers appear with unique IDs
+# → http://127.0.0.1:8000/workers
+
+# 5. Hardware baseline (this PC)
 python scripts/collect_baseline.py --out docs/baseline-james.json
 
-# 4. LAN check (second PC must reach this host:port)
+# 6. LAN check (second PC must reach this host:port)
 python scripts/check_lan.py --host 192.168.4.68 --port 8000
 ```
 

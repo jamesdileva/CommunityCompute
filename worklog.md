@@ -124,4 +124,29 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - `/health` depends on `get_db` so tests override with tmp DBs — no test pollution of dev DB.
 - No Alembic: dev SQLite file is disposable (gitignored); migrations only when data worth keeping exists.
 **Next steps:**
-- Sprint 2: worker skeleton (config, persistent ID already done, registration endpoint + startup/shutdown).
+- Sprint 2: worker skeleton (config, persistent ID already done, registration endpoint + startup/shutdown) (done below).
+
+---
+
+## 2026-10-11 — Sprint 2: Worker Skeleton
+**Goal:** Worker process connects to Coordinator; both PCs appear in `GET /workers` with unique Worker IDs (roadmap Sprint 2).
+**Scope (in / out):**
+- In (Full Sprint 2): registration endpoint `POST /workers/register` (idempotent upsert), `GET /workers`, `WorkerRegistration`/`WorkerOut` schemas, worker startup sequence + `--loop` re-register + graceful shutdown (SIGINT/SIGTERM/SIGBREAK), conftest.py shared tmp-DB fixture, tests.
+- Out: heartbeat loop (S4), capabilities (S3), polling/execution (S6), auth (S20), dashboard.
+**Exit condition (verbatim from roadmap):** Both computers appear in `GET /workers` with unique Worker IDs.
+**Changes:**
+- Coordinator: app/schemas/worker.py (WorkerRegistration: UUID id, version, optional hostname; WorkerOut), app/api/workers.py (register upsert → status `online` + last_seen; list ordered by first_seen), main.py mounts router, version → 0.1.0-sprint2, tests/conftest.py (shared client fixture), tests/test_workers.py (5 tests: create, idempotent re-register, two unique IDs, bad-UUID 422, missing version 422), test_health.py refactored onto conftest
+- Worker: worker/__init__.py `__version__`, worker/registration.py (payload + POST client), worker/main.py rewritten (startup sequence, `--once` register, `--loop` re-register with retry, threading stop-event, signal handlers SIGINT/SIGTERM/SIGBREAK); `.gitignore` now ignores `.worker_id*`
+- README: status + Sprint 2 quickstart
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 22 passed
+- `python -m pytest apps/coordinator/tests apps/worker/tests` (random order) → 22 passed
+- Live: Worker A (`--once`) + Worker B (`--once --worker-id-file .worker_id_b`) → both `status=online`; `GET /workers` → 2 unique IDs — pass
+- `--loop` worker + CTRL_BREAK → `signal 21 - shutting down` → `stopped` → exit 0 — pass
+- cp1252 console fix: replaced `→`/`—` in worker *console output* (docstrings keep Unicode) — pass
+**Decisions:**
+- `POST /workers/register` is an idempotent upsert (same ID refreshes version/hostname/last_seen); registration response returns the full WorkerOut row.
+- Windows signal reality check: `CTRL_C_EVENT` via `os.kill` did NOT deliver to handler (possibly detached from console); `CTRL_BREAK_EVENT` → SIGBREAK (21) works and is now registered alongside SIGINT/SIGTERM. Turtle: `Ctrl+C` in an attached console still delivers SIGINT.
+- `.worker_id*` gitignored so per-machine ID files never commit; second PC keeps own file locally.
+**Next steps:**
+- Sprint 3: hardware capability discovery (CPU/RAM/OS/GPU/VRAM/driver, capability schema + persistence) — needs worker-side discovery + coordinator endpoint/table.
