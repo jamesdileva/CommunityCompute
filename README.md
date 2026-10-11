@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 4 — heartbeats + availability (offline on silence, back online on restart). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 5 — job + work-unit model (submit → deterministic decomposition). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 
@@ -48,6 +48,12 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --once
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --interval 15
 # → GET /workers shows online + live cpu/ram; stopping it flips to offline
 #   after HEARTBEAT_TIMEOUT_SECONDS (default 60)
+
+# 6. Submit a job (deterministic hello-compute) — Sprint 5
+#    POST http://127.0.0.1:8000/jobs
+#    {"workload_type":"hello_compute","params":{"op":"sum"},
+#     "total_units":1000,"chunk_size":100}
+# → GET /jobs/{id} shows exactly 10 work units (1-100 ... 901-1000)
 
 # 5. Hardware baseline (this PC)
 python scripts/collect_baseline.py --out docs/baseline-james.json

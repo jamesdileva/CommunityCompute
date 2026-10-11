@@ -198,4 +198,27 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Heartbeat log append-only (audit/diagnostics + Sprint 27 accounting precursor); latest snapshot denormalized onto workers for cheap reads.
 - `--loop` now registers once then heartbeats (previously re-registered each interval) — registration idempotency retained via `--once`.
 **Next steps:**
-- Sprint 5: job + work-unit models, job submission, work-unit generation, state machine, job status endpoint (M1 groundwork).
+- Sprint 5: job + work-unit models, job submission, work-unit generation, state machine, job status endpoint (M1 groundwork) (done below).
+
+---
+
+## 2026-10-11 — Sprint 5: Job Model
+**Goal:** Jobs and Work Units exist; deterministic decomposition on submit (roadmap Sprint 5).
+**Scope (in / out):**
+- In (Full Sprint 5): Job + WorkUnit models, transactional create (job + units together), deterministic range generation with last-chunk clamp, state-machine transition rules, POST/GET /jobs, GET /jobs/{id} with per-status counts, tests.
+- Out: scheduler assignment/leasing execution (S6/S7), workload requirement matching (S9), aggregation of results (S6), retries driven by scheduler (transitions validated only).
+**Exit condition (verbatim from roadmap):** Submitting 1,000 units, chunk size 100, creates exactly 10 Work Units with correct ranges/identifiers.
+**Changes:**
+- Coordinator: models/job.py + models/work_unit.py (unique (job_id, sequence)), schemas/job.py (JobCreate positive-only validation; JobOut; JobStatusOut with counts+units), services/jobs.py (plan_units, unit_count, create_job atomic, job_status aggregates), services/state.py (unit + job transition matrices), api/jobs.py (POST/GET /jobs, GET /jobs/{id}), version → 0.1.0-sprint5
+- tests: test_unit_generation.py (5), test_state_machine.py (4), test_jobs.py (6)
+- README quickstart
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 69 passed
+- Live: POST /jobs {1000/100} → job queued; GET /jobs/{id} → 10 units, counts {queued:10}, first (1,1,100), last (10,901,1000), 10 unique IDs — pass
+**Decisions:**
+- Ranges are deterministic (1-based inclusive, ceil-div chunking) so Sprint 6 verification is exact — coordinator will know expected results for hello-compute.
+- Job params copied at creation (immutability enforced in service + test); job row never mutated post-create.
+- State machine encodes transition rules now; nothing *drives* transitions until Sprint 6/7 (validated-only).
+- Job status aggregates read from unit statuses (no background rollup job) — simple and correct for prototype.
+**Next steps:**
+- Sprint 6: first distributed workload — worker polling + assignment + execution + result upload + aggregation (M1).
