@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.heartbeat import WorkerHeartbeat
 from app.models.worker import Worker
-from app.schemas.heartbeat import Heartbeat, HeartbeatResponse
+from app.schemas.heartbeat import Availability, Heartbeat, HeartbeatResponse
 
 log = logging.getLogger("coordinator")
 
@@ -32,28 +32,42 @@ def receive_heartbeat(
 
     now = datetime.now(timezone.utc)
     resources = payload.resources
+    availability = payload.availability
+    status = _status_from_availability(availability)
     db.add(
         WorkerHeartbeat(
             worker_id=worker_id,
             received_at=now,
-            resources={**resources.model_dump(), "available": payload.available},
+            resources={**resources.model_dump(),
+                       "available": availability.available if availability else None,
+                       "paused": availability.paused if availability else None},
             cpu_percent=resources.cpu_percent,
             ram_available_mb=resources.ram_available_mb,
             gpu_percent=resources.gpu_percent,
         )
     )
     worker.last_seen = now
-    worker.status = "online" if payload.available is not False else "paused"
+    worker.status = status
     worker.cpu_percent = resources.cpu_percent
     worker.ram_available_mb = resources.ram_available_mb
     worker.gpu_percent = resources.gpu_percent
     db.commit()
     log.info(
-        "heartbeat id=%s avail=%s cpu=%s%% gpu=%s%% ram_avail=%sMB",
-        worker_id, payload.available, resources.cpu_percent, resources.gpu_percent,
-        resources.ram_available_mb,
+        "heartbeat id=%s status=%s avail=%s paused=%s cpu=%s%% gpu=%s%% ram_avail=%sMB",
+        worker_id, status, getattr(availability, "available", None),
+        getattr(availability, "paused", None), resources.cpu_percent,
+        resources.gpu_percent, resources.ram_available_mb,
     )
-    return HeartbeatResponse(status=worker.status, server_time=now.isoformat())
+    return HeartbeatResponse(status=status, server_time=now.isoformat())
+
+
+def _status_from_availability(availability) -> str:
+    """paused (explicit stop) > throttled (policy denied) > online (available)."""
+    if availability is None:
+        return "online"  # legacy worker: liveness-derived
+    if availability.paused:
+        return "paused"
+    return "online" if availability.available else "throttled"
 
 
 @router.get("/workers/{worker_id}/heartbeats")

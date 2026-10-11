@@ -43,10 +43,11 @@ def test_heartbeat_refreshes_status_and_resources(client: TestClient):
     assert row["ram_available_mb"] == 5000
 
 
-def test_heartbeat_available_false_marks_paused(client: TestClient):
+def test_heartbeat_availability_paused_marks_paused(client: TestClient):
     wid = str(uuid.uuid4())
     _register(client, wid)
-    body = {**HB, "worker_id": wid, "available": False}
+    body = {**HB, "worker_id": wid,
+            "availability": {"available": True, "paused": True, "reason": "paused"}}
     resp = client.post(f"/workers/{wid}/heartbeat", json=body)
     assert resp.status_code == 200
     assert resp.json()["status"] == "paused"
@@ -64,10 +65,17 @@ def test_missing_available_field_falls_back_to_derived_status(client: TestClient
 def test_paused_worker_still_heartbeats_and_resumes(client: TestClient):
     wid = str(uuid.uuid4())
     _register(client, wid)
-    client.post(f"/workers/{wid}/heartbeat", json={**HB, "worker_id": wid, "available": False})
+    client.post(
+        f"/workers/{wid}/heartbeat",
+        json={**HB, "worker_id": wid,
+              "availability": {"available": True, "paused": True, "reason": "paused"}},
+    )
     assert _beat(client, wid).status_code == 200
-    assert client.post(f"/workers/{wid}/heartbeat",
-                       json={**HB, "worker_id": wid, "available": True}).status_code == 200
+    assert client.post(
+        f"/workers/{wid}/heartbeat",
+        json={**HB, "worker_id": wid,
+              "availability": {"available": True, "paused": False, "reason": "ok"}},
+    ).status_code == 200
     assert {w["id"]: w for w in client.get("/workers").json()}[wid]["status"] == "online"
 
 

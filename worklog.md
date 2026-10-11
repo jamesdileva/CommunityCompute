@@ -299,7 +299,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Dropped unique constraint needs a dev-DB reset (documented in quick-reference); creation code still guarantees one original per sequence.
 - No worker changes: the executor's deterministic math already matched; verification lives server-side by design.
 **Next steps:**
-- Sprint 11: contributor policy engine (idle-only, CPU/GPU %, temperature ceiling, battery, schedule, pause) (done below).
+- Sprint 12: resource monitoring (temperature/telemetry richness, availability transitions) (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 12: Resource Monitoring
+**Goal:** Continuous local awareness; high-load auto-transitions available → throttled (roadmap Sprint 12).
+**Scope (in / out):**
+- In (Full Sprint 12): worker_resource_samples table + endpoints, one-sample-per-tick pipeline (telemetry + gate + heartbeat), availability object with reason, throttled status, policy re-read per tick, gpu_stats single-call helper.
+- Out: execution-limit enforcement (guide §18 separate control, later), dashboard (S16), process enumeration (guide §17: measurable signals only), history retention policy.
+**Exit condition (verbatim from roadmap):** Run a high-load application and observe the Worker automatically transition from available to unavailable/throttled according to policy.
+**Changes:**
+- Coordinator: models/sample.py (worker_resource_samples), schemas/sample.py, api/resources.py (POST/GET /workers/{id}/resources), Heartbeat.availability {available,paused,reason} replaces the bare bool, heartbeat → status online|throttled|paused, availability._EXPLICIT += throttled
+- Worker: worker/gpu_stats.py (single nvidia-smi query), monitoring.py (build_report/report_resources), state sampler uses shared helper, main loop: policy reload per tick + one sample per tick + `--heartbeat-interval`
+- tests: test_resources.py (8), test_monitoring.py (6), wiring tests restructured for the new cadence
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 196 passed
+- random order → 196 passed
+- Live: policy {max_cpu_percent: 0} → status **throttled**, log "holding off work: cpu X% > limit 0.0%", job stayed queued (0 claims); policy {} → **online**, job completed (2/2); 8 telemetry samples accumulated — pass
+**Decisions:**
+- Policy file re-read each tick (cheap JSON read; corrupt → defaults) so contributor edits apply within one tick — live check caught startup-only loading first.
+- Status vocabulary: online | throttled (policy denies) | paused (explicit) | offline (heartbeat timeout); throttled is explicit so it isn't mis-derived.
+- One nvidia-smi call + one CPU sample per tick shared by telemetry/policy/heartbeat (previously two).
+- Telemetry POST failures are swallowed (None return) — monitoring must never break the work loop.
+**Next steps:**
+- Sprint 13: workload adapter system (registry + lifecycle) — prepare for real AI workloads.
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---

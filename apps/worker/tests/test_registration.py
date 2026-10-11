@@ -89,8 +89,9 @@ def test_run_loop_stops_when_event_set(monkeypatch, tmp_path):
     assert calls == []
 
 
-def test_run_loop_registers_once_then_heartbeats(monkeypatch, tmp_path):
-    """Sprint 4/6: loop = register (once) + capabilities, then heartbeat + work poll."""
+def test_run_loop_registers_once_then_ticks(monkeypatch, tmp_path):
+    """Sprint 12 cadence: register once (immediate heartbeat), then per-tick
+    telemetry + policy + work, with heartbeats on their own (slower) cadence."""
     events: list[str] = []
     monkeypatch.setattr(
         main_mod, "register_worker",
@@ -100,10 +101,16 @@ def test_run_loop_registers_once_then_heartbeats(monkeypatch, tmp_path):
                         lambda *a, **k: events.append("capabilities"))
     monkeypatch.setattr(main_mod, "send_heartbeat",
                         lambda *a, **k: events.append("heartbeat") or {"status": "online"})
+    monkeypatch.setattr(main_mod, "report_resources",
+                        lambda *a, **k: events.append("resources"))
+    monkeypatch.setattr(main_mod, "_availability",
+                        lambda policy: ((True, "ok"),
+                                        {"available": True, "paused": False, "reason": "ok"},
+                                        {"cpu_percent": 1.0}))
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: None)  # idle queue
 
     class OneShotEvent:
-        """Sets after 3 waits → exits the loop after 2 beats."""
+        """Sets after 3 waits → exits the loop after 2 more ticks."""
 
         def __init__(self) -> None:
             self._waits = 0
@@ -118,10 +125,11 @@ def test_run_loop_registers_once_then_heartbeats(monkeypatch, tmp_path):
             self._waits += 1
             return False
 
-    args = parse_args(["--loop", "--interval", "0.01",
+    args = parse_args(["--loop", "--interval", "0.01", "--heartbeat-interval", "0.02",
                        "--worker-id-file", str(tmp_path / "wid")])
     assert run_worker(args, OneShotEvent()) == 0  # type: ignore[arg-type]
     assert events.count("register") == 1  # registration happens once
     assert events.count("capabilities") == 1
-    assert events.count("heartbeat") == 2  # then heartbeats each interval
+    assert events.count("heartbeat") >= 1
+    assert events.count("resources") == 2  # telemetry every tick
     assert events[:2] == ["register", "capabilities"]

@@ -18,11 +18,18 @@ class ResourceSnapshot(BaseModel):
     gpu_percent: float | None = Field(default=None, ge=0, le=100)
 
 
+class Availability(BaseModel):
+    """Contributor availability (Sprint 11; reason added Sprint 12)."""
+
+    available: bool = True
+    paused: bool = False  # explicit stop by the contributor
+    reason: str | None = None  # why unavailable/throttled (policy denial)
+
+
 class Heartbeat(BaseModel):
     worker_id: UUID
     resources: ResourceSnapshot = Field(default_factory=ResourceSnapshot)
-    # Sprint 11: contributor policy availability. null = worker doesn't report it.
-    available: bool | None = None
+    availability: Availability | None = None
 
 
 class HeartbeatResponse(BaseModel):

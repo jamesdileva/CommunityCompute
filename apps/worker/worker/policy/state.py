@@ -1,4 +1,4 @@
-"""Machine state sampling for policy evaluation (Sprint 11).
+"""Machine state sampling for policy evaluation (Sprint 11; Sprint 12: one GPU query).
 
 Measurable signals only (implementation-guide §17): CPU/GPU utilization,
 temperature, battery, input idle. Anything undetectable is reported as
@@ -7,8 +7,6 @@ None — the engine then decides (fail closed where safety demands).
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 import sys
 from datetime import datetime
 
@@ -16,6 +14,8 @@ try:
     import psutil
 except ImportError:  # pragma: no cover - hard dependency
     psutil = None
+
+from worker.gpu_stats import query_gpu
 
 
 class MachineState:
@@ -28,6 +28,7 @@ class MachineState:
         gpu_temp_c: float | None,
         on_battery: bool | None,
         idle_seconds: float | None,
+        gpu_vram_used_mb: float | None = None,
         now: datetime | None = None,
     ) -> None:
         self.cpu_percent = cpu_percent
@@ -35,16 +36,19 @@ class MachineState:
         self.gpu_temp_c = gpu_temp_c
         self.on_battery = on_battery
         self.idle_seconds = idle_seconds
+        self.gpu_vram_used_mb = gpu_vram_used_mb
         self.now = now or datetime.now()
 
 
 def collect_state() -> MachineState:
+    gpu = query_gpu()
     return MachineState(
         cpu_percent=_cpu_percent(),
-        gpu_percent=_nvidia_stat("utilization.gpu"),
-        gpu_temp_c=_nvidia_stat("temperature.gpu"),
+        gpu_percent=gpu["utilization_gpu"],
+        gpu_temp_c=gpu["temperature_gpu"],
         on_battery=_on_battery(),
         idle_seconds=_idle_seconds(),
+        gpu_vram_used_mb=gpu["memory_used_mb"],
     )
 
 
@@ -55,22 +59,6 @@ def _cpu_percent() -> float | None:
         return round(psutil.cpu_percent(interval=0.2), 1)
     except Exception:  # noqa: BLE001
         return None
-
-
-def _nvidia_stat(metric: str) -> float | None:
-    """GPU metric via nvidia-smi; None when absent/unsupported (Iris Xe/AMD: unknown)."""
-    if not shutil.which("nvidia-smi"):
-        return None
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", f"--query-gpu={metric}", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return float(out.stdout.strip().splitlines()[0].strip())
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return None
-    return None
 
 
 def _on_battery() -> bool | None:

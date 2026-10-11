@@ -65,6 +65,11 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # }
 # → paused workers report available:false in heartbeats; GET /workers shows "paused"
 
+# Telemetry + throttling (Sprint 12): one sample per tick; policy re-read each tick
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --interval 2 --heartbeat-interval 20
+# GET /workers/{id}            -> status: online | throttled | paused | offline
+# GET /workers/{id}/resources  -> newest samples (cpu %, ram avail/used, gpu %, vram MB, temp)
+
 # Submit a job + inspect (PowerShell inline)
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':20,'chunk_size':1}, timeout=5).json()['id'])"
 python -c "import httpx; d = httpx.get('http://127.0.0.1:8000/jobs/<id>', timeout=5).json(); print(d['status'], d['counts'], d['aggregate'])"

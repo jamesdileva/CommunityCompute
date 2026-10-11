@@ -11,8 +11,8 @@ from datetime import datetime, timedelta, timezone
 from app.models.worker import OFFLINE, ONLINE, Worker
 
 # States set explicitly (not derived): paused by contributor policy (Sprint 11),
-# disabled by an operator. Unknown until first heartbeat/registration.
-_EXPLICIT = {"paused", "disabled"}
+# throttled by policy denial (Sprint 12), disabled by an operator.
+_EXPLICIT = {"paused", "throttled", "disabled"}
 
 
 def effective_status(worker: Worker, timeout_seconds: int) -> str:

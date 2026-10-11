@@ -41,13 +41,14 @@ from worker.execution.hello_compute import execute_unit  # noqa: E402
 from worker.work import claim_work, submit_result  # noqa: E402
 from worker.policy.schema import AvailabilityPolicy  # noqa: E402
 from worker.policy.engine import evaluate as evaluate_policy  # noqa: E402
-from worker.policy.state import collect_state  # noqa: E402
+from worker.policy.state import MachineState, collect_state  # noqa: E402
 from worker.policy.store import (  # noqa: E402
     load_policy,
     policy_path,
     save_policy,
     set_paused,
 )
+from worker.monitoring import build_report, report_resources  # noqa: E402
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -64,7 +65,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--worker-id-file", default=None, help="Persistent worker ID file")
     p.add_argument("--once", action="store_true", help="Register once and exit")
     p.add_argument("--loop", action="store_true", help="Register, then re-register on interval")
-    p.add_argument("--interval", type=float, default=15.0, help="Loop interval seconds")
+    p.add_argument("--interval", type=float, default=15.0,
+                   help="Loop tick seconds (telemetry/policy/work per tick)")
+    p.add_argument("--heartbeat-interval", type=float, default=20.0,
+                   help="Heartbeat cadence seconds (>= --interval)")
     p.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout seconds")
     p.add_argument(
         "--no-capabilities",
@@ -125,29 +129,54 @@ def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float,
         print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
 
 
+def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float,
+                       availability: dict | None = None) -> None:
+    try:
+        payload = build_heartbeat_payload(worker_id)
+        if availability is not None:
+            payload["availability"] = availability
+        body = send_heartbeat(coordinator_url, payload, timeout=timeout)
+        r = payload["resources"]
+        print(
+            f"[worker {worker_id}] heartbeat ok: cpu={r['cpu_percent']}% "
+            f"ram_free={r['ram_available_mb']}MB gpu={r['gpu_percent']}%",
+            flush=True,
+        )
+        _ = body
+    except Exception as exc:  # noqa: BLE001 — heartbeat failure must not stop the worker
+        print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
+
+
 def _policy_file(args: argparse.Namespace) -> Path:
     if args.policy_file:
         return Path(args.policy_file)
     return policy_path(get_worker_id_file(args.worker_id_file))
 
 
-def _availability(policy: AvailabilityPolicy) -> tuple[bool, str]:
-    """Policy gate: sample the machine, evaluate. Never raises."""
+def _availability(policy: AvailabilityPolicy) -> tuple[tuple[bool, str], dict, dict]:
+    """One sampling pass: (available, reason) + availability payload + telemetry report."""
     try:
-        return evaluate_policy(policy, collect_state())
-    except Exception as exc:  # noqa: BLE001 - gate failure must not silence the worker
-        return True, f"policy check failed ({exc}); defaulting to available"
+        state = collect_state()
+        available, reason = evaluate_policy(policy, state)
+        availability = {"available": available, "paused": policy.paused, "reason": reason}
+        return (available, reason), availability, build_report(state)
+    except Exception as exc:  # noqa: BLE001 - sampling failure must not silence the worker
+        reason = f"sampling failed ({exc}); defaulting to available"
+        availability = {"available": True, "paused": policy.paused, "reason": reason}
+        return (True, reason), availability, {}
 
 
 def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
-                        policy: AvailabilityPolicy | None = None,
+                        availability: tuple[bool, str] | None = None,
                         execution_delay: float = 0.0) -> None:
-    """Claim one unit, execute, submit. All failures logged, never fatal."""
-    if policy is not None:
-        available, reason = _availability(policy)
-        if not available:
-            print(f"[worker {worker_id}] holding off work: {reason}", flush=True)
-            return
+    """Claim one unit, execute, submit. All failures logged, never fatal.
+
+    `availability` is (available, reason) from this tick's sample — a denied
+    gate means no claim is attempted at all.
+    """
+    if availability is not None and not availability[0]:
+        print(f"[worker {worker_id}] holding off work: {availability[1]}", flush=True)
+        return
     try:
         assignment = claim_work(coordinator_url, worker_id, timeout=timeout)
     except Exception as exc:  # noqa: BLE001 - claim failure: retry next tick
@@ -221,9 +250,12 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
         return 0
 
     print(f"[worker {worker_id}] loop every {args.interval}s (Ctrl+C to stop)", flush=True)
+    heartbeat_interval = max(args.heartbeat_interval, args.interval)
+    next_heartbeat = 0.0
     try:
         registered = False
         while not stop_event.is_set():
+            now = time.monotonic()
             if not registered:
                 result = _attempt_register(coordinator_url, payload, args.timeout)
                 if result is None:
@@ -234,12 +266,22 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
                     _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
                 registered = True
                 print(f"[worker {worker_id}] registered: {result.get('id')}", flush=True)
+                next_heartbeat = now  # heartbeat immediately after registration
             else:
-                _attempt_heartbeat(coordinator_url, worker_id, args.timeout, policy=policy)
+                # Policy is re-read each tick: contributor edits apply within one tick
+                # (cheap JSON read; a corrupt file falls back to defaults).
+                policy = load_policy(policy_file)
+                # One sampling pass per tick: telemetry + policy gate + heartbeat payload
+                verdict, availability, report = _availability(policy)
+                report_resources(coordinator_url, worker_id, report, args.timeout)
+                if now >= next_heartbeat:
+                    _attempt_heartbeat(coordinator_url, worker_id, args.timeout,
+                                       availability=availability)
+                    next_heartbeat = now + heartbeat_interval
                 if not args.no_work:
                     _attempt_work_cycle(
                         coordinator_url, worker_id, args.timeout,
-                        policy=policy, execution_delay=args.execution_delay,
+                        availability=verdict, execution_delay=args.execution_delay,
                     )
             stop_event.wait(args.interval)
     except KeyboardInterrupt:
