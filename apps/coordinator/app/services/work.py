@@ -1,10 +1,17 @@
-"""Work assignment + result handling (Sprint 6; Sprint 7: leases + attempts).
+"""Work assignment + result handling (Sprint 6; S7 leases; S8 classified verification).
 
 Leasing model (implementation-guide §14): a claimed unit holds a lease
 (`lease_id, worker, started_at, expires_at, attempt_number`). When a lease
 expires the unit returns to the queue and any other worker may retry it —
 this is what makes worker disappearance survivable. Sweeping happens lazily
 on claim (prototype: no background reaper).
+
+Verification model (Sprint 8): every result is classified — accepted, or
+rejected with a `failure_kind` (value_mismatch, hash_mismatch, worker_error,
+unsupported_workload, verification_disagreement). Jobs created with
+`verify_sample > 0` spawn duplicate check units claimed by a *different*
+worker; agreement confirms the original (`verified_by`), disagreement fails
+both (verification overturn).
 """
 
 import hashlib
@@ -28,16 +35,33 @@ log = logging.getLogger("coordinator")
 
 DEFAULT_WORKLOAD_TYPE = "hello_compute"
 
+# Failure classification (Sprint 8).
+VALUE_MISMATCH = "value_mismatch"
+HASH_MISMATCH = "hash_mismatch"
+WORKER_ERROR = "worker_error"
+UNSUPPORTED_WORKLOAD = "unsupported_workload"
+VERIFICATION_DISAGREEMENT = "verification_disagreement"
+
 
 def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
-    """Expire stale leases (lazy sweep), then FIFO-claim the oldest queued unit."""
+    """Expire stale leases (lazy sweep), then FIFO-claim the oldest queued unit.
+
+    Duplicate check units (`verify_of` set) are skipped when the only
+    claimant available is the original's worker — verification must come
+    from a different worker to mean anything.
+    """
     _sweep_expired_leases(db)
-    unit = (
+    candidates = (
         db.query(WorkUnit)
         .filter_by(status="queued")
         .order_by(WorkUnit.created_at, WorkUnit.sequence)
-        .first()
+        .all()
     )
+    unit = None
+    for candidate in candidates:
+        if candidate.verify_of is None or _original_worker(db, candidate) != worker_id:
+            unit = candidate
+            break
     if unit is None:
         return None
     job = db.get(Job, unit.job_id)
@@ -86,6 +110,14 @@ def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
     )
 
 
+def _original_worker(db: Session, duplicate: WorkUnit) -> str | None:
+    """Worker id behind the original unit of a duplicate (None when unknown)."""
+    if not duplicate.verify_of:
+        return None
+    original_result = db.get(Result, duplicate.verify_of)
+    return original_result.worker_id if original_result else None
+
+
 def _sweep_expired_leases(db: Session) -> int:
     """Requeue units whose lease expired. Returns count requeued."""
     now = datetime.now(timezone.utc)
@@ -122,10 +154,14 @@ def _sweep_expired_leases(db: Session) -> int:
 
 
 def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[bool, str | None, Result]:
-    """Verify + persist. Returns (accepted, rejection_reason, result_row).
+    """Classify + persist. Returns (accepted, rejection_reason, result_row).
 
-    409 territory: a unit already verified-completed only accepts an
-    identical resubmission (idempotent 200); any different result conflicts.
+    - Unknown unit → KeyError (caller maps to 404).
+    - Already verified-completed: identical resubmission → idempotent 200,
+      anything else → Conflict (409).
+    - Completing an original on a sampled job spawns a duplicate check unit
+      for a *different* worker; completing a duplicate compares against the
+      original (match → `verified_by`, mismatch → disagreement, both failed).
     """
     unit = db.get(WorkUnit, work_unit_id)
     if unit is None:
@@ -144,23 +180,13 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
         raise Conflict("work unit already completed by another worker")
 
     op = (job.params or {}).get("op", "sum") if job else "sum"
-    ok = False
-    error = payload.error
-    if payload.status == "completed":
-        try:
-            expected = hello_compute(op, unit.range_start, unit.range_end)
-            if payload.value != expected:
-                error = f"value mismatch: expected {expected!r}, got {payload.value!r}"
-            else:
-                ok = True
-        except ValueError as exc:
-            error = str(exc)
-        if ok and payload.output_hash is not None:
-            if payload.output_hash != output_hash(op, payload.value):
-                ok = False
-                error = "output hash mismatch (corrupted result)"
-    else:
-        error = payload.error or "worker reported failure"
+    original_value = None
+    if unit.verify_of is not None:
+        # Duplicate check: the question is reproduction of the confirmed
+        # original, not re-derivation of the expectation.
+        original_result = db.get(Result, unit.verify_of)
+        original_value = original_result.value if original_result else None
+    ok, kind, error = _classify(payload, unit, op, original_value)
 
     execution_ms = _as_float(payload.metrics.get("execution_ms"))
     result = existing or Result(work_unit_id=work_unit_id)
@@ -170,6 +196,7 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
     result.output_hash = payload.output_hash
     result.execution_ms = execution_ms
     result.error = None if ok else error
+    result.failure_kind = None if ok else kind
     if existing is None:
         db.add(result)
 
@@ -179,11 +206,122 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
     unit.lease_expires_at = None
     db.commit()
     db.refresh(result)
+    _close_attempt(db, work_unit_id, payload.worker_id, ok)
 
-    # close the open attempt for this lease/worker
+    if ok:
+        log.info("unit %s completed by %s (%sms)", work_unit_id, payload.worker_id, execution_ms)
+        if unit.verify_of is None:
+            _maybe_spawn_duplicate(db, job, unit)
+        else:
+            _confirm_original(db, unit, result)
+    else:
+        log.info("unit %s REJECTED from %s [%s]: %s",
+                 work_unit_id, payload.worker_id, kind, error)
+        if unit.verify_of is not None and kind == VERIFICATION_DISAGREEMENT:
+            _overturn_original(db, unit, error or "verification disagreement")
+    _refresh_job_status(db, unit.job_id)
+    return ok, (None if ok else (error or "rejected")), result
+
+
+def _classify(payload: WorkResult, unit: WorkUnit, op: str,
+              original_value: object = None) -> tuple[bool, str | None, str | None]:
+    """Classify a result: (accepted, failure_kind, message).
+
+    Duplicates are judged on reproduction: a value differing from the
+    confirmed original is a disagreement, even if the expectation check
+    would also fail (reproduction is the stronger, more specific signal).
+    """
+    if payload.status != "completed":
+        return False, WORKER_ERROR, payload.error or "worker reported failure"
+    if unit.verify_of is not None and original_value is not None:
+        if payload.value != original_value:
+            return False, VERIFICATION_DISAGREEMENT, (
+                f"verification disagreement: confirmed={original_value!r}, "
+                f"duplicate={payload.value!r}"
+            )
+        if payload.output_hash is not None and payload.output_hash != output_hash(op, payload.value):
+            return False, HASH_MISMATCH, "output hash mismatch (corrupted result)"
+        return True, None, None
+    try:
+        expected = hello_compute(op, unit.range_start, unit.range_end)
+    except ValueError as exc:
+        return False, UNSUPPORTED_WORKLOAD, str(exc)
+    if payload.value != expected:
+        return False, VALUE_MISMATCH, (
+            f"value mismatch: expected {expected!r}, got {payload.value!r}"
+        )
+    if payload.output_hash is not None and payload.output_hash != output_hash(op, payload.value):
+        return False, HASH_MISMATCH, "output hash mismatch (corrupted result)"
+    return True, None, None
+
+
+def _sampled(unit: WorkUnit, rate: float) -> bool:
+    """Deterministic sampling: same unit always replays the same decision."""
+    if rate <= 0:
+        return False
+    if rate >= 1:
+        return True
+    digest = hashlib.sha256(unit.id.encode()).digest()
+    return int.from_bytes(digest[:2], "big") / 65536 < rate
+
+
+def _maybe_spawn_duplicate(db: Session, job: Job | None, unit: WorkUnit) -> None:
+    """Queue a duplicate check unit for an original, sampled by job.verify_sample."""
+    if job is None or not _sampled(unit, job.verify_sample or 0.0):
+        return
+    duplicate = WorkUnit(
+        id=str(uuid.uuid4()),
+        job_id=unit.job_id,
+        sequence=unit.sequence,  # same logical shard as the original
+        range_start=unit.range_start,
+        range_end=unit.range_end,
+        status="queued",
+        verify_of=unit.id,
+    )
+    db.add(duplicate)
+    db.commit()
+    log.info("duplicate check unit %s spawned for %s (original by %s)",
+             duplicate.id, unit.id, unit.assigned_worker_id)
+
+
+def _confirm_original(db: Session, duplicate: WorkUnit, dup_result: Result) -> None:
+    """Record a duplicate's agreement on the original (`verified_by`).
+
+    Disagreement never reaches here: classification rejects a non-reproducing
+    duplicate first, and `_overturn_original` handles the fallout.
+    """
+    original_result = db.get(Result, duplicate.verify_of) if duplicate.verify_of else None
+    if original_result is None or dup_result.value != original_result.value:
+        return
+    original_result.verified_by = dup_result.worker_id
+    db.commit()
+    log.info("unit %s verified by second worker %s", duplicate.verify_of, dup_result.worker_id)
+
+
+def _overturn_original(db: Session, duplicate: WorkUnit, message: str) -> None:
+    """A duplicate failed to reproduce the confirmed original: fail *both*.
+
+    The original's result row stays as history (it was accepted), but the
+    unit flips completed → failed so the job cannot complete on a disputed
+    value (state matrix allows this overturn explicitly).
+    """
+    original = db.get(WorkUnit, duplicate.verify_of)
+    original_result = db.get(Result, duplicate.verify_of) if duplicate.verify_of else None
+    if original is None:
+        return
+    if original_result is not None:
+        original_result.ok = False
+        original_result.failure_kind = VERIFICATION_DISAGREEMENT
+        original_result.error = message
+    original.status = "failed"
+    db.commit()
+    log.info("unit %s DISAGREEMENT -> original and duplicate both failed", original.id)
+
+
+def _close_attempt(db: Session, work_unit_id: str, worker_id: str, ok: bool) -> None:
     attempt = (
         db.query(WorkUnitAttempt)
-        .filter_by(work_unit_id=work_unit_id, worker_id=payload.worker_id, outcome=None)
+        .filter_by(work_unit_id=work_unit_id, worker_id=worker_id, outcome=None)
         .order_by(WorkUnitAttempt.started_at.desc())
         .first()
     )
@@ -192,40 +330,48 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
         attempt.outcome = "completed" if ok else "failed"
         db.commit()
 
-    if ok:
-        log.info("unit %s completed by %s (%sms)", work_unit_id, payload.worker_id, execution_ms)
-    else:
-        log.info("unit %s REJECTED from %s: %s", work_unit_id, payload.worker_id, error)
-    _refresh_job_status(db, unit.job_id)
-    return ok, (None if ok else (error or "rejected")), result
-
 
 def aggregate_job(db: Session, job_id: str) -> dict | None:
-    """Per-status counts + final aggregate once every unit completed."""
+    """Per-status counts + final aggregate once every unit completed.
+
+    The final uses original units only (`verify_of IS NULL`) — duplicates
+    confirm values, they must not double-count them.
+    """
     job = db.get(Job, job_id)
     if job is None:
         return None
     units = sorted(db.query(WorkUnit).filter_by(job_id=job_id).all(), key=lambda u: u.sequence)
+    primaries = [u for u in units if u.verify_of is None]
     counts: dict[str, int] = {}
     for u in units:
         counts[u.status] = counts.get(u.status, 0) + 1
     out: dict = {"counts": counts}
+    out["rejections"] = _rejection_summary(db, [u.id for u in units])
     if units and counts.get("completed", 0) == len(units):
         op = (job.params or {}).get("op", "sum")
         if op == "sum":
             total = 0
-            for u in units:
+            for u in primaries:
                 r = db.get(Result, u.id)
                 if r and isinstance(r.value, (int, float)):
                     total += r.value
             out["final"] = total
         elif op == "hash":
             h = hashlib.sha256()
-            for u in units:
+            for u in primaries:
                 r = db.get(Result, u.id)
                 h.update(str(r.value if r else "").encode())
             out["final"] = h.hexdigest()
     return out
+
+
+def _rejection_summary(db: Session, unit_ids: list[str]) -> dict[str, int]:
+    kinds: dict[str, int] = {}
+    for uid in unit_ids:
+        r = db.get(Result, uid)
+        if r is not None and not r.ok and r.failure_kind:
+            kinds[r.failure_kind] = kinds.get(r.failure_kind, 0) + 1
+    return kinds
 
 
 def _refresh_job_status(db: Session, job_id: str) -> None:

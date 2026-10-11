@@ -47,6 +47,10 @@ def submit_result(
     if not ok:
         raise HTTPException(
             status_code=422,
-            detail={"verification": "failed", "reason": reason},
+            detail={
+                "verification": "failed",
+                "reason": reason,
+                "failure_kind": result.failure_kind,
+            },
         )
     return result

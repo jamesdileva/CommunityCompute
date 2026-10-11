@@ -41,6 +41,14 @@ _ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("lease_started_at", "TIMESTAMP"),
         ("lease_expires_at", "TIMESTAMP"),
         ("attempt_number", "INTEGER DEFAULT 0"),
+        ("verify_of", "VARCHAR(36)"),
+    ],
+    "jobs": [
+        ("verify_sample", "FLOAT DEFAULT 0.0"),
+    ],
+    "results": [
+        ("failure_kind", "VARCHAR(32)"),
+        ("verified_by", "VARCHAR(36)"),
     ],
 }
 

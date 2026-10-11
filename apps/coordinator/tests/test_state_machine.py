@@ -19,9 +19,14 @@ def test_unit_interrupted_returns_to_queue():
 def test_unit_rejects_illegal_jumps():
     assert not can_transition(wu.QUEUED, wu.RUNNING)  # no skipping dispatch
     assert not can_transition(wu.QUEUED, wu.COMPLETED)
-    assert not can_transition(wu.COMPLETED, wu.RUNNING)  # terminal
     assert not can_transition(wu.CANCELLED, wu.QUEUED)
     assert not can_transition("bogus", wu.RUNNING)
+
+
+def test_completed_can_fail_on_verification_overturn():
+    # duplicate checker disagreed -> completed flips to failed (Sprint 8)
+    assert can_transition(wu.COMPLETED, wu.FAILED)
+    assert not can_transition(wu.COMPLETED, wu.RUNNING)
 
 
 def test_job_transitions():

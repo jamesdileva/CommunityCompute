@@ -56,6 +56,11 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':20,'chunk_size':1}, timeout=5).json()['id'])"
 python -c "import httpx; d = httpx.get('http://127.0.0.1:8000/jobs/<id>', timeout=5).json(); print(d['status'], d['counts'], d['aggregate'])"
 
+# Job with duplicate verification (fraction 0..1 double-executed by a 2nd worker)
+python -c "import httpx; print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type':'hello_compute','params':{'op':'sum'},'total_units':2,'chunk_size':1,'verify_sample':1.0}, timeout=5).json()['id'])"
+# corrupted results -> 422 with failure_kind: value_mismatch | hash_mismatch |
+# worker_error | unsupported_workload | verification_disagreement
+
 # Tests (always before commit)
 python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly
 python -m pytest apps/coordinator/tests apps/worker/tests           # + random order
@@ -65,7 +70,8 @@ python -m pytest apps/coordinator/tests/test_leasing.py -v          # single fil
 python scripts/collect_baseline.py --out docs/baseline-<hostname>.json
 python scripts/check_lan.py --host 192.168.4.68 --port 8000
 
-# Dev DB reset (prototype: disposable; additive bootstrap covers added columns)
+# Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
+# but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
 Remove-Item communitycompute.db -ErrorAction SilentlyContinue
 sqlite3 communitycompute.db ".tables"                               # workers work_units results ...
 

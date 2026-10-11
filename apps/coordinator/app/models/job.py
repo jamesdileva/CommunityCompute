@@ -1,4 +1,4 @@
-"""Job model (Sprint 5): logical workload, decomposed into Work Units.
+"""Job model (Sprint 5; Sprint 8 adds verify_sample for duplicate verification).
 
 A Job is immutable once created (params/total/chunk never change) — the
 work units are the mutable, individually-scheduled pieces.
@@ -6,7 +6,7 @@ work units are the mutable, individually-scheduled pieces.
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String, func
+from sqlalchemy import JSON, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -28,6 +28,8 @@ class Job(Base):
     total_units: Mapped[int] = mapped_column(Integer)
     chunk_size: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(32), default=QUEUED)
+    # Sprint 8: fraction of units to double-execute for verification (0..1)
+    verify_sample: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

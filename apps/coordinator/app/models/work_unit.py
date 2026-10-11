@@ -1,8 +1,14 @@
-"""WorkUnit model (Sprint 5; S6 assignment; S7 leasing columns)."""
+"""WorkUnit model (Sprint 5; S6 assignment; S7 leasing; S8 verify_of duplicates).
+
+Duplicate verification units share the original's sequence (same logical
+shard) and are distinguished by `verify_of`. The (job_id, sequence) unique
+constraint was therefore dropped — creation-time code still guarantees one
+original per sequence (duplicates are the only sharers).
+"""
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -21,7 +27,6 @@ LEASE_STATES = (DISPATCHED, RUNNING)
 
 class WorkUnit(Base):
     __tablename__ = "work_units"
-    __table_args__ = (UniqueConstraint("job_id", "sequence", name="uq_workunit_job_seq"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_id: Mapped[str] = mapped_column(String(36), ForeignKey("jobs.id"), index=True)
@@ -37,6 +42,8 @@ class WorkUnit(Base):
     lease_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempt_number: Mapped[int] = mapped_column(Integer, default=0)
+    # Sprint 8: duplicate-verification unit points at its original (None = original)
+    verify_of: Mapped[str | None] = mapped_column(String(36), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

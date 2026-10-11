@@ -44,4 +44,6 @@ class ResultOut(BaseModel):
     output_hash: str | None = None
     execution_ms: float | None = None
     error: str | None = None
+    failure_kind: str | None = None
+    verified_by: str | None = None
     created_at: object = None

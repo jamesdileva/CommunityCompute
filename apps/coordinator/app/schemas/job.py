@@ -18,6 +18,7 @@ class JobCreate(BaseModel):
     params: dict = Field(default_factory=dict)
     total_units: int = Field(gt=0)
     chunk_size: int = Field(gt=0)
+    verify_sample: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class WorkUnitOut(BaseModel):
@@ -41,6 +42,7 @@ class JobOut(BaseModel):
     total_units: int
     chunk_size: int
     status: JobStatus
+    verify_sample: float = 0.0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

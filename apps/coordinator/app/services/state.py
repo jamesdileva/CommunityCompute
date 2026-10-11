@@ -15,7 +15,8 @@ _UNIT_TRANSITIONS: dict[str, set[str]] = {
     wu.RUNNING: {wu.COMPLETED, wu.FAILED, wu.INTERRUPTED, wu.CANCELLED},
     wu.INTERRUPTED: {wu.QUEUED, wu.FAILED},  # requeue for retry (expired lease)
     wu.FAILED: {wu.QUEUED},  # manual/auto retry
-    # terminal: COMPLETED, CANCELLED -> {}
+    wu.COMPLETED: {wu.FAILED},  # verification overturn (duplicate disagreed)
+    # terminal: CANCELLED -> {}
 }
 
 _JOB_TRANSITIONS: dict[str, set[str]] = {

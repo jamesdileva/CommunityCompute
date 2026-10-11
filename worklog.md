@@ -272,6 +272,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - 409 only on *conflicting* late results; identical resubmits stay 200 idempotent (worker 409-tolerant logs + moves on).
 - `--execution-delay` is a failure-test knob only (implementation-guide §16 deliberate failure tests), not production behavior.
 **Next steps:**
-- Sprint 8: result verification hardening (challenge/known-answer units, selective duplication).
+- Sprint 8: classified verification + duplicate execution (done below).
 - Two-machine E2E still pending (see quick-reference.md).
 - Two-machine E2E still pending (laptop on LAN, `python apps/worker/worker/main.py --coordinator-url http://192.168.4.68:8000 --loop`).
+
+---
+
+## 2026-10-11 — Sprint 8: Result Verification
+**Goal:** Correct results accepted, corrupted rejected — with classified reasons and optional duplicate agreement (roadmap Sprint 8).
+**Scope (in / out):**
+- In (Full Sprint 8): failure_kind on results (5 kinds) in 422 detail, verify_sample on jobs, duplicate check units claimed by a *different* worker, match → verified_by / mismatch → both failed (overturn), completed→failed matrix transition, rejections in aggregate, tests.
+- Out: reputation scoring (S23), challenge workload types beyond hello-compute (later), worker-side changes (verification is coordinator-side).
+**Exit condition (verbatim from roadmap):** A deliberately corrupted result is rejected. A correct result is accepted.
+**Changes:**
+- Coordinator: models/result.py (+failure_kind, verified_by), models/work_unit.py (+verify_of; dropped (job,seq) unique — duplicates share sequences), models/job.py (+verify_sample), schemas (JobCreate/JobOut verify_sample, ResultOut +fields), services/work.py (_classify, _sampled, _maybe_spawn_duplicate, _confirm_original/_overturn_original; aggregate from originals only + rejections), services/state.py (completed→failed overturn), 422 detail +failure_kind, version → 0.1.0-sprint8
+- tests: test_verification.py (10), test_state_machine.py overturn case
+- quick-reference.md (verify_sample snippet, failure kinds, constraint-reset note)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 109 passed
+- Live: sample=1.0 job 2x1 → 4 units completed, aggregate final=3 (no double-count), originals carry verified_by — pass
+- Live disagreement: duplicate value 7 vs confirmed 1 → 422 verification_disagreement, both units failed, job failed — pass
+- Live kinds: corrupt value → value_mismatch, unknown op → unsupported_workload — pass
+**Decisions:**
+- Duplicates are judged on *reproduction* of the confirmed original, not re-derivation — caught a design bug mid-sprint (expectation-first made disagreement unreachable).
+- verified_by naming the confirmer gives Sprint 23 reputation a free data source later.
+- Dropped unique constraint needs a dev-DB reset (documented in quick-reference); creation code still guarantees one original per sequence.
+- No worker changes: the executor's deterministic math already matched; verification lives server-side by design.
+**Next steps:**
+- Sprint 9: scheduler compatibility — workload requirements vs capability profiles (heterogeneous routing).
+- Two-machine E2E still pending (see quick-reference.md).
