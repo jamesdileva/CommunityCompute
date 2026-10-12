@@ -45,15 +45,15 @@ UNSUPPORTED_WORKLOAD = "unsupported_workload"
 VERIFICATION_DISAGREEMENT = "verification_disagreement"
 
 
-def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
-    """Expire stale leases (lazy sweep), then FIFO-claim the oldest queued unit.
+def claim_next_unit(db: Session, worker_id: str,
+                    cached_models: set[str] | None = None) -> WorkAssignment | None:
+    """Expire stale leases (lazy sweep), then claim the best queued unit.
 
-    Duplicate check units (`verify_of` set) are skipped when the only
-    claimant available is the original's worker — verification must come
-    from a different worker to mean anything.
-
-    Compatibility (Sprint 9): a unit is only claimed when the worker's
-    stored capability profile satisfies the job's requirements.
+    Ordering (Sprint 15): model-cached units first (stable FIFO within each
+    group), then everything else — cache affinity is a preference, so
+    uncached workers are still served plain units.
+    Also enforces: duplicates skip the original's worker; the worker's
+    stored capability profile must satisfy the job's requirements (S9).
     """
     _sweep_expired_leases(db)
     candidates = (
@@ -63,17 +63,23 @@ def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
         .all()
     )
     profile = _worker_profile(db, worker_id)
-    unit = None
+    cached = cached_models or set()
+    fallback: WorkUnit | None = None
     for candidate in candidates:
-        if candidate.verify_of is None or _original_worker(db, candidate) != worker_id:
-            job = db.get(Job, candidate.job_id)
-            reqs = (job.requirements or {}) if job else {}
-            compatible, reason = check(reqs, profile)
-            if not compatible:
-                log.debug("unit %s skipped for %s: %s", candidate.id, worker_id, reason)
-                continue
-            unit = candidate
-            break
+        if candidate.verify_of is not None and _original_worker(db, candidate) == worker_id:
+            continue  # verification must come from a different worker
+        job = db.get(Job, candidate.job_id)
+        reqs = (job.requirements or {}) if job else {}
+        model_req = reqs.get("model")
+        if model_req and model_req in cached:
+            if _compatible(reqs, profile, candidate.id, worker_id):
+                unit = candidate
+                break
+            continue
+        if fallback is None and _compatible(reqs, profile, candidate.id, worker_id):
+            fallback = candidate
+    else:
+        unit = fallback
     if unit is None:
         return None
     job = db.get(Job, unit.job_id)
@@ -120,6 +126,13 @@ def claim_next_unit(db: Session, worker_id: str) -> WorkAssignment | None:
         lease_expires_at=unit.lease_expires_at,
         attempt_number=attempt_number,
     )
+
+
+def _compatible(reqs: dict, profile: dict | None, unit_id: str, worker_id: str) -> bool:
+    compatible, reason = check(reqs, profile)
+    if not compatible:
+        log.debug("unit %s skipped for %s: %s", unit_id, worker_id, reason)
+    return compatible
 
 
 def _original_worker(db: Session, duplicate: WorkUnit) -> str | None:
@@ -217,6 +230,7 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
     result.value = payload.value
     result.output_hash = payload.output_hash
     result.execution_ms = execution_ms
+    result.metrics = dict(payload.metrics) if isinstance(payload.metrics, dict) else None
     result.error = None if ok else error
     result.failure_kind = None if ok else kind
     if existing is None:

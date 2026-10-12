@@ -8,8 +8,9 @@ from worker.work import claim_work, submit_result
 
 
 def test_claim_work_returns_none_when_empty(monkeypatch):
-    def fake_post(url, timeout=None):
+    def fake_post(url, json=None, timeout=None):
         assert url.endswith("/claim")
+        assert json == {"cached_models": []}
         request = httpx.Request("POST", url)
         return httpx.Response(200, json={}, request=request)
 
@@ -23,12 +24,12 @@ def test_claim_work_returns_assignment(monkeypatch):
                   "range_start": 1, "range_end": 10, "params": {"op": "sum"},
                   "lease_id": "l1", "attempt_number": 1}
 
-    def fake_post(url, timeout=None):
+    def fake_post(url, json=None, timeout=None):
         request = httpx.Request("POST", url)
         return httpx.Response(200, json=assignment, request=request)
 
     monkeypatch.setattr(httpx, "post", fake_post)
-    got = claim_work("http://127.0.0.1:8000", "w1")
+    got = claim_work("http://127.0.0.1:8000", "w1", cached_models=["hashing-embedder@1"])
     assert got["work_unit_id"] == "u1"
 
 

@@ -120,6 +120,17 @@ print('embeddings  :', jid)
 "@
 # embedder is adapter-based (worker/execution/embeddings/embedder.py): a model-backed
 # embedder replaces HashingEmbedder behind the same signature (model cache: Sprint 15)
+
+# Model cache (Sprint 15): fetch-once + verify + reuse; scheduler prefers cache-warm
+# submit with requirements {"model": "hashing-embedder@1"} -> first unit fetches,
+# rest reuse (metrics.cache_hit 0 -> 1); GET /workers shows capabilities.cached_models
+python -c @"
+import httpx
+print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type': 'embeddings',
+    'params': {'dim': 32}, 'total_units': 20, 'chunk_size': 10,
+    'requirements': {'model': 'hashing-embedder@1'}}, timeout=5).json()['id'])
+"@
+# cache dir: <idfile-dir>/models (override: --model-cache-dir / MODEL_CACHE_DIR)
 # GET /workers/{id} -> capabilities.runtimes lists what the worker can execute
 # GET /workers/{id}            -> status: online | throttled | paused | offline
 # GET /workers/{id}/resources  -> newest telemetry samples (cpu %, ram, gpu %, vram, temp)

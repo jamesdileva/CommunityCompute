@@ -1,7 +1,9 @@
-"""Embeddings workload (Sprint 14): batch embedding over deterministic corpus ranges."""
+"""Embeddings workload (Sprint 14; Sprint 15: model-cache-backed prepare)."""
 
 from worker.execution.embeddings.embedder import HashingEmbedder, corpus_text
 from worker.execution.executor import ExecutorMetadata, UnitResult, WorkloadExecutor
+from worker.models.cache import CacheError, ModelCache, default_cache_dir
+from worker.models.manifest import manifest_for
 
 DEFAULT_DIM = 128
 
@@ -19,18 +21,36 @@ class EmbeddingsExecutor(WorkloadExecutor):
             deterministic=True,
         )
 
+    def prepare(self, assignment: dict) -> None:
+        """Ensure the workload's model artifact is cached (fetch-once, Sprint 15)."""
+        manifest = manifest_for(self.workload_type)
+        if manifest is None:
+            return
+        try:
+            cache_hit, _data = ModelCache(default_cache_dir()).ensure(manifest)
+        except (CacheError, OSError) as exc:
+            raise RuntimeError(f"model cache ensure failed: {exc}") from exc
+        self._last_cache_hit = cache_hit  # consumed by execute() for metrics
+
     def execute(self, assignment: dict) -> UnitResult:
         dim = (assignment.get("params") or {}).get("dim", DEFAULT_DIM)
         if not isinstance(dim, int) or dim <= 0:
             return UnitResult(status="failed", error=f"invalid dim {dim!r}")
+        cache_hit = getattr(self, "_last_cache_hit", False)
         embedder = HashingEmbedder(dim=dim)
         start, end = assignment["range_start"], assignment["range_end"]
         texts = [corpus_text(i) for i in range(start, end + 1)]
         vectors = embedder.embed_documents(texts)
+        manifest = manifest_for(self.workload_type)
         return UnitResult(
             status="completed",
             value={"dim": dim, "vectors": vectors},
-            metrics={"docs": len(texts), "dim": dim},
+            metrics={
+                "docs": len(texts),
+                "dim": dim,
+                "cache_hit": bool(cache_hit),
+                "model": manifest.key if manifest else None,
+            },
             execution_ms=None,
         )
 

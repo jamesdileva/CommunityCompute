@@ -34,6 +34,12 @@ class WorkResult(BaseModel):
     metrics: dict = Field(default_factory=dict)  # e.g. {"execution_ms": 12.3}
 
 
+class ClaimRequest(BaseModel):
+    """Worker → Coordinator claim body. Empty list = no cache preference."""
+
+    cached_models: list[str] = Field(default_factory=list)
+
+
 class ResultOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,4 +52,5 @@ class ResultOut(BaseModel):
     error: str | None = None
     failure_kind: str | None = None
     verified_by: str | None = None
+    metrics: dict | None = None
     created_at: object = None

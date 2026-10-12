@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.result import Result
-from app.schemas.work import ResultOut, WorkResult
+from app.schemas.work import ClaimRequest, ResultOut, WorkResult
 from app.services import work as work_service
 from app.services.work import Conflict
 
@@ -17,9 +17,16 @@ router = APIRouter()
 
 
 @router.post("/work/{worker_id}/claim")
-def claim_work(worker_id: str, db: Session = Depends(get_db)) -> dict:
-    """Expire stale leases, then FIFO-claim the oldest queued unit ({} when idle)."""
-    assignment = work_service.claim_next_unit(db, worker_id)
+def claim_work(worker_id: str, body: ClaimRequest | None = None,
+               db: Session = Depends(get_db)) -> dict:
+    """Expire stale leases, then claim the best queued unit ({} when idle).
+
+    Units whose declared model is already cached on this worker are
+    preferred (stable FIFO within each group) — a preference, not a gate:
+    uncached claims still get served.
+    """
+    cached = set(body.cached_models) if body else set()
+    assignment = work_service.claim_next_unit(db, worker_id, cached_models=cached)
     if assignment is None:
         return {}
     return assignment.model_dump()

@@ -15,6 +15,7 @@ Second PC: same command with the coordinator's LAN URL; use a separate
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 import threading
@@ -49,6 +50,8 @@ from worker.policy.store import (  # noqa: E402
     set_paused,
 )
 from worker.monitoring import build_report, report_resources  # noqa: E402
+from worker.models.cache import default_cache_dir, ModelCache  # noqa: E402
+from worker.capabilities.discover import cached_models  # noqa: E402
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -83,6 +86,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Simulate slow work: seconds to sleep before computing (failure tests)",
     )
     p.add_argument("--policy-file", default=None, help="Availability policy JSON path")
+    p.add_argument("--model-cache-dir", default=None,
+                   help="Model cache directory (default: MODEL_CACHE_DIR or <idfile-dir>/models)")
     pause = p.add_mutually_exclusive_group()
     pause.add_argument("--pause", action="store_true", help="Persist paused=true and exit")
     pause.add_argument("--resume", action="store_true", help="Persist paused=false and exit")
@@ -166,19 +171,26 @@ def _availability(policy: AvailabilityPolicy) -> tuple[tuple[bool, str], dict, d
         return (True, reason), availability, {}
 
 
+def cached_model_names() -> list[str]:
+    """`name@version` strings for the coordinator's cache-preference ordering."""
+    return [f"{m['name']}@{m['version']}" for m in cached_models()]
+
+
 def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
                         availability: tuple[bool, str] | None = None,
-                        execution_delay: float = 0.0) -> None:
+                        execution_delay: float = 0.0,
+                        cached_models: list[str] | None = None) -> None:
     """Claim one unit, execute, submit. All failures logged, never fatal.
 
-    `availability` is (available, reason) from this tick's sample — a denied
-    gate means no claim is attempted at all.
+    `cached_models` is sent with the claim so the coordinator can prefer
+    units whose model this worker already has local (Sprint 15).
     """
     if availability is not None and not availability[0]:
         print(f"[worker {worker_id}] holding off work: {availability[1]}", flush=True)
         return
     try:
-        assignment = claim_work(coordinator_url, worker_id, timeout=timeout)
+        assignment = claim_work(coordinator_url, worker_id,
+                                cached_models=cached_models, timeout=timeout)
     except Exception as exc:  # noqa: BLE001 - claim failure: retry next tick
         print(f"[worker {worker_id}] work claim FAILED: {exc}", flush=True)
         return
@@ -218,6 +230,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
     Policy gate (Sprint 11): each work cycle consults the contributor's
     availability policy first; when it denies, no work is claimed.
     """
+    if args.model_cache_dir:
+        os.environ["MODEL_CACHE_DIR"] = args.model_cache_dir
     coordinator_url = get_coordinator_url(args.coordinator_url)
     worker_id = get_or_create_worker_id(get_worker_id_file(args.worker_id_file))
     payload = build_payload(worker_id)
@@ -252,6 +266,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
     print(f"[worker {worker_id}] loop every {args.interval}s (Ctrl+C to stop)", flush=True)
     heartbeat_interval = max(args.heartbeat_interval, args.interval)
     next_heartbeat = 0.0
+    _last_cached = cached_models()  # re-report capabilities when this changes
     try:
         registered = False
         while not stop_event.is_set():
@@ -278,10 +293,19 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
                     _attempt_heartbeat(coordinator_url, worker_id, args.timeout,
                                        availability=availability)
                     next_heartbeat = now + heartbeat_interval
+                    # Capability refresh incl. cached_models when the cache changed
+                    cached = cached_models()
+                    if cached != _last_cached:
+                        _last_cached = cached
+                        if not args.no_capabilities:
+                            _attempt_report_capabilities(
+                                coordinator_url, worker_id, args.timeout
+                            )
                 if not args.no_work:
                     _attempt_work_cycle(
                         coordinator_url, worker_id, args.timeout,
                         availability=verdict, execution_delay=args.execution_delay,
+                        cached_models=cached_model_names(),
                     )
             stop_event.wait(args.interval)
     except KeyboardInterrupt:

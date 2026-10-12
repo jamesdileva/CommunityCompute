@@ -29,6 +29,7 @@ class Requirements(BaseModel):
     min_vram_mb: int | None = Field(default=None, ge=0)
     os: str | None = Field(default=None, max_length=64)
     runtime: str | None = Field(default=None, max_length=64)
+    model: str | None = Field(default=None, max_length=128)  # Sprint 15: cache affinity
 
 
 class JobCreate(BaseModel):

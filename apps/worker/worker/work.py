@@ -3,13 +3,20 @@
 import httpx
 
 
-def claim_work(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict | None:
+def claim_work(
+    coordinator_url: str,
+    worker_id: str,
+    cached_models: list[str] | None = None,
+    timeout: float = 5.0,
+) -> dict | None:
     """POST /work/{worker_id}/claim — sweeps expired leases, then FIFO claims.
 
+    `cached_models` lets the coordinator prefer units whose model this worker
+    already has cached (Sprint 15 preference, not a gate).
     Returns the assignment (with lease fields) or None when no work is queued.
     """
     url = f"{coordinator_url.rstrip('/')}/work/{worker_id}/claim"
-    resp = httpx.post(url, timeout=timeout)
+    resp = httpx.post(url, json={"cached_models": cached_models or []}, timeout=timeout)
     resp.raise_for_status()
     return resp.json() or None
 

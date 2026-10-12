@@ -423,7 +423,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Executor metadata declares requirements (cpu_cores, gpu...) enforced in can_execute against optional capabilities; scheduler-side compat (S9) remains the routing authority.
 - Second workload needed new coordinator reference math (stats_range); unknown types already flow to unsupported_workload (422) unchanged.
 **Next steps:**
-- Sprint 14: first real AI workload (embeddings through this same pipeline) (done below).
+- Sprint 15: model cache (manifests, versions, reuse, scheduler preference for cached workers) (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 15: Model Cache
+**Goal:** Fetch once, reuse forever; workers advertise cached models; scheduler prefers cache-warm workers (roadmap Sprint 15).
+**Scope (in / out):**
+- In (Full Sprint 15): ModelManifest + ModelCache (ensure/verify/prune/evict), executor prepare() fetch + cache_hit metrics, cached_models in capabilities (+ re-report on change), claim body cached_models + cache-first ordering, requirements.model validated, result metrics persisted.
+- Out: real multi-MB/GB weight files (machinery proven on tiny bundles; same paths), remote download auth/resume, per-policy cache quotas.
+**Exit condition (verbatim from roadmap):** The first Work Unit downloads a model. Subsequent Work Units reuse the local model without downloading it again.
+**Changes:**
+- Worker: worker/models/{manifest,cache}.py (inline/file/http sources, sha256 verify, LRU prune, offline reuse), execution/embeddings executor prepare() + metrics {cache_hit, model}, capabilities cached_models + discovery, main.py re-reports capabilities on change + claim sends cached names + --model-cache-dir, MODEL_CACHE_DIR/worker/.gitignore models? no — models/ is per-machine runtime data (add to .gitignore)
+- Coordinator: Requirements.model, ClaimRequest.cached_models, claim ordering cache-first (stable FIFO groups), Result.metrics persisted + exposed
+- tests: test_model_cache.py (10), test_model_prepare.py (5), test_model_preference.py (3)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 243 passed
+- random order → 243 passed
+- Live: model-required embeddings job → unit metrics cache_hit 0,1,1 (fetch then reuse); GET /workers shows cached_models [hashing-embedder@1]; models/ dir holds artifact + marker; second job → zero fetches — pass
+**Decisions:**
+- Machinery-over-megabytes: 19-byte inline bundle exercises fetch/verify/reuse/report/prefer/prune identically to GB weights (stated in code + here).
+- `model` is preference, NOT a compat gate — check() excludes it, else workers could never reach the first fetch that warms the cache (caught by test before commit).
+- prepare() owns fetching (lifecycle stage, fails the unit loudly on CacheError); UnitResult.metrics merged into submit body so cache evidence rides the existing Result path.
+- LRU needs real fetch timestamps recorded in the marker file (mtime alone is same-second-ambiguous); `now or time.time()` → `now if not None` bug class caught by prune test.
+**Next steps:**
+- Sprint 16: dashboard (contributor + network views over the APIs built so far).
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---

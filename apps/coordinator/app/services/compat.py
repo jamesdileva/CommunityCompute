@@ -14,8 +14,17 @@ from __future__ import annotations
 
 
 def check(requirements: dict | None, capabilities: dict | None) -> tuple[bool, str]:
-    """Return (compatible, reason). Never raises on odd shapes — rejects instead."""
-    reqs = {k: v for k, v in (requirements or {}).items() if v not in (None, False)}
+    """Return (compatible, reason). Never raises on odd shapes — rejects instead.
+
+    The `model` key is deliberately *excluded* from gating (Sprint 15): it is
+    a cache-affinity preference handled by claim ordering, not a
+    compatibility requirement — otherwise a worker could never reach the
+    first fetch that warms its cache.
+    """
+    reqs = {
+        k: v for k, v in (requirements or {}).items()
+        if k != "model" and v not in (None, False)
+    }
     if not reqs:
         return True, "no requirements"
     if not capabilities:

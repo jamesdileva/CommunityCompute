@@ -50,6 +50,7 @@ _ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "results": [
         ("failure_kind", "VARCHAR(32)"),
         ("verified_by", "VARCHAR(36)"),
+        ("metrics", "JSON"),
     ],
 }
 

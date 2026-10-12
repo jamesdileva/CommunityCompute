@@ -50,3 +50,4 @@ class CapabilityProfile(BaseModel):
     os: OSInfo = Field(default_factory=OSInfo)
     gpus: list[GPUInfo] = Field(default_factory=list)
     runtimes: list[str] = Field(default_factory=list)  # executable workload types (Sprint 9)
+    cached_models: list[dict] = Field(default_factory=list)  # {name, version} (Sprint 15)
