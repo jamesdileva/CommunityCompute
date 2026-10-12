@@ -423,7 +423,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Executor metadata declares requirements (cpu_cores, gpu...) enforced in can_execute against optional capabilities; scheduler-side compat (S9) remains the routing authority.
 - Second workload needed new coordinator reference math (stats_range); unknown types already flow to unsupported_workload (422) unchanged.
 **Next steps:**
-- Sprint 15: model cache (manifests, versions, reuse, scheduler preference for cached workers) (done below).
+- Sprint 16: dashboard (contributor + network views over the APIs built so far) (done below).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 16: Dashboard
+**Goal:** Both PCs' activity understandable without logs — contributor + network views (roadmap Sprint 16).
+**Scope (in / out):**
+- In (Full Sprint 16): React+TS dashboard (typed API client, contributor tab, network tab), coordinator endpoints (pause/resume, network summary, current work, contribution stats), operator-pause enforcement in claim path.
+- Out: auth-gated views, WebSocket live updates (S17), historical charts.
+**Exit condition (verbatim from roadmap):** A user can visually understand what both PCs are doing without inspecting logs.
+**Changes:**
+- Coordinator: models/worker.py (+paused_by_operator), services/availability.py (operator pause wins), api/workers.py (POST /workers/{id}/pause|resume), api/network.py (GET /network/summary, /workers/{id}/work, /workers/{id}/stats), services/work.py (claim refuses operator-paused workers), db additive migration, version → 0.1.0-sprint16
+- Dashboard: src/types.ts, src/services/api.ts, src/components/{ContributorView,NetworkView}.tsx, App.tsx (tabs + 5s refresh), vite proxy expanded, package version
+- tests: test_network.py (8)
+- quick-reference.md (dashboard section; removed a duplicated snippet + orphan from earlier bad edits)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 250 passed
+- `npm run build` (tsc --noEmit + vite) → pass
+- Live (single call): dashboard `/` → 200; proxy /workers /network/summary /jobs → 200; job 8 units drained to 2/4; **UI pause → claims frozen (still 2/4)**; resume → completed 4/4; stats 4 completed / 0.133s; network summary via proxy reports completed 4 / 5m — pass
+**Decisions:**
+- Operator pause (dashboard) is *enforcement*: claims return `{}` and availability treats `paused_by_operator` as explicitly-paused. It is distinct from worker self-pause (availability.paused) and policy throttling — three different pause meanings, all visible as one status.
+- Dashboard refresh = 5s polling (no new deps); WebSocket updates are Sprint 17, not now.
+- Fixed quick-reference debt found while editing: a duplicated workload snippet + an orphan comment line from prior misplaced edits; confirmed file coherent after repair.
+**Next steps:**
+- Sprint 17: WebSocket control plane (live notifications, pause/cancel messages, no aggressive polling).
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---

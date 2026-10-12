@@ -32,6 +32,7 @@ _ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("cpu_percent", "FLOAT"),
         ("ram_available_mb", "INTEGER"),
         ("gpu_percent", "FLOAT"),
+        ("paused_by_operator", "BOOLEAN DEFAULT 0"),
     ],
     "work_units": [
         ("assigned_worker_id", "VARCHAR(36)"),

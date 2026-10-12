@@ -67,6 +67,35 @@ def get_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
     return _to_out(worker, effective_status(worker, timeout), cap.profile if cap else None)
 
 
+@router.post("/{worker_id}/pause", response_model=WorkerOut)
+def pause_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
+    """Operator pause (Sprint 16): claims stop until resumed. Heartbeats never clear it."""
+    worker = db.get(Worker, worker_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+    worker.paused_by_operator = True
+    db.commit()
+    db.refresh(worker)
+    log.info("worker %s paused by operator", worker_id)
+    timeout = get_settings().heartbeat_timeout_seconds
+    cap = db.get(WorkerCapability, worker_id)
+    return _to_out(worker, effective_status(worker, timeout), cap.profile if cap else None)
+
+
+@router.post("/{worker_id}/resume", response_model=WorkerOut)
+def resume_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
+    worker = db.get(Worker, worker_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+    worker.paused_by_operator = False
+    db.commit()
+    db.refresh(worker)
+    log.info("worker %s resumed by operator", worker_id)
+    timeout = get_settings().heartbeat_timeout_seconds
+    cap = db.get(WorkerCapability, worker_id)
+    return _to_out(worker, effective_status(worker, timeout), cap.profile if cap else None)
+
+
 def _to_out(worker: Worker, status: str, capabilities: dict | None) -> WorkerOut:
     out = WorkerOut.model_validate(worker)
     tiers = hardware_tiers(capabilities) if capabilities else None

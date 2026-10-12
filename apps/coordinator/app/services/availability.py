@@ -1,4 +1,4 @@
-"""Availability derivation (Sprint 4).
+"""Availability derivation (Sprint 4; Sprint 11 worker pause; Sprint 16 operator pause).
 
 A worker is online when its `last_seen` is fresh relative to the configured
 heartbeat timeout. Explicit states (paused/disabled) win when they exist
@@ -16,6 +16,8 @@ _EXPLICIT = {"paused", "throttled", "disabled"}
 
 
 def effective_status(worker: Worker, timeout_seconds: int) -> str:
+    if getattr(worker, "paused_by_operator", False):
+        return "paused"  # dashboard pause wins over every derived state (Sprint 16)
     if worker.status in _EXPLICIT:
         return worker.status
     if worker.last_seen is None:

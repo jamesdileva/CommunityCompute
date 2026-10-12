@@ -28,6 +28,7 @@ from app.models.attempt import WorkUnitAttempt
 from app.models.job import Job
 from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
+from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
 from app.services.compat import check
 from app.services.workloads import expected as workload_expected
@@ -56,6 +57,10 @@ def claim_next_unit(db: Session, worker_id: str,
     stored capability profile must satisfy the job's requirements (S9).
     """
     _sweep_expired_leases(db)
+    worker = db.get(Worker, worker_id)
+    if worker is not None and worker.paused_by_operator:
+        log.debug("unit claim refused for operator-paused %s", worker_id)
+        return None  # enforcement, not display: paused workers get nothing
     candidates = (
         db.query(WorkUnit)
         .filter_by(status="queued")

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -30,3 +30,7 @@ class Worker(Base):
     cpu_percent: Mapped[float | None] = mapped_column(Float)
     ram_available_mb: Mapped[int | None] = mapped_column(Integer)
     gpu_percent: Mapped[float | None] = mapped_column(Float)
+    # Sprint 16: operator pause from the dashboard. Enforcement, not display:
+    # claims from a paused worker get nothing until resumed. Heartbeats never
+    # clear it (worker-side pause via availability.paused stays separate).
+    paused_by_operator: Mapped[bool] = mapped_column(Boolean, default=False)
