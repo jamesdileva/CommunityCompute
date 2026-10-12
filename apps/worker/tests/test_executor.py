@@ -190,9 +190,12 @@ def test_stats_range_local_verify_catches_corruption():
 def test_registry_dispatch_and_miss():
     assert isinstance(executor_for("hello_compute"), HelloComputeExecutor)
     assert isinstance(executor_for("stats_range"), StatsRangeExecutor)
+    from worker.execution.embeddings.executor import EmbeddingsExecutor
+
+    assert isinstance(executor_for("embeddings"), EmbeddingsExecutor)
     assert executor_for("nope") is None
-    assert sorted(supported_runtimes()) == ["hello_compute", "stats_range"]
-    assert len(list_executors()) == 2
+    assert sorted(supported_runtimes()) == ["embeddings", "hello_compute", "stats_range"]
+    assert len(list_executors()) == 3
 
 
 def test_unknown_workload_fails_closed():

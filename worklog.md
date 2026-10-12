@@ -304,52 +304,49 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
-## 2026-10-11 — Sprint 13: Workload Adapter System
-**Goal:** Scheduler separated from workload implementation (roadmap Sprint 13).
+## 2026-10-11 — Sprint 9: Scheduler Compatibility
+**Goal:** Stop treating every machine as identical — route only compatible work (roadmap Sprint 9).
 **Scope (in / out):**
-- In (Full Sprint 13): WorkloadExecutor interface (metadata, can_execute, prepare/execute/verify/cleanup), worker registry + run_unit lifecycle runner, hello-compute refactored onto the interface, second workload stats_range (both sides), coordinator verification dispatch via workload registry.
-- Out: embeddings/image executors (S14), model cache (S15), sandboxing (S22).
-**Exit condition (verbatim from roadmap):** Two different workload implementations run through the same scheduler without scheduler-specific branching.
+- In (Full Sprint 9): declarative Requirements schema on jobs, worker profile lookup at claim time, compat filter in claim path, runtimes in capabilities, routing tests.
+- Out: H1/H2/H3 tiers + explanation endpoint (S10), scoring (S31), policy-aware routing (S11), runtime capability *probes* (benchmarks — guide §9).
+**Exit condition (verbatim from roadmap):** Create two Work Unit types (CPU-only, GPU-required). The scheduler sends each only to compatible Workers.
 **Changes:**
-- Worker: worker/execution/executor.py (interface + lifecycle runner + ExecutorMetadata), registry.py (executor_for/list_executors/supported_runtimes/run_unit), hello_compute.py (interface impl; public compute/output_hash unchanged), stats_range.py (new workload, dict payload, own verify), main.py run_unit wiring, capabilities discover → runtimes from registry
-- Coordinator: services/workloads/__init__.py (expected()/output_hash() dispatch), services/workloads/stats_range.py (reference), services/work.py (_classify dispatches by workload_type)
-- tests: test_executor.py (rewritten: 16), test_workload_registry.py (6)
+- Coordinator: schemas/job.py (Requirements extra="forbid" — typo'd keys rejected 422; JobCreate.requirements; JobOut/JobStatusOut echo), models/job.py (+requirements JSON), services/compat.py (check() in architecture §10 order: CPU → RAM → OS → runtime → GPU vendor/VRAM), services/jobs.py (requirements stored), services/work.py (claim filters candidates by worker's stored profile; same-worker duplicate skip kept), api/jobs.py (status echoes verify_sample/requirements), version → 0.1.0-sprint9
+- Worker: capabilities schema +discover +runtimes (executor registry), worker/__init__.py path bootstrap (robust standalone `packages.protocol` import)
+- tests: test_compat.py (16), test_claim_routing.py (8), test_discover runtimes
+- quick-reference.md requirements snippets
 **Tests run:**
-- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 207 passed
-- random order → 207 passed
-- Live: worker advertises runtimes [hello_compute, stats_range]; both job types claimed+executed+**verified** through the same endpoint (values 1, 2 scalar and {'count':1,...} dicts); both jobs draining (snapshot at +12s: 2/4 and 2/3, zero failures) — pass
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 129 passed
+- random order → 129 passed
+- Live: both workers report runtimes ['hello_compute']; CPU-only job (4 units) → **completed** final=10 across both workers; amd-GPU job (2) → **completed** final=3; nvidia-GPU job → stays **queued** (correctly starves both workers) — pass
 **Decisions:**
-- Lifecycle order **prepare → validate → execute → verify → cleanup** (verify before cleanup: verifier may need scratch state) — first draft had cleanup in finally-before-verify; test caught it.
-- Stage failures map to failed UnitResults with distinct prefixes (prepare failed / rejected / execution error / verify crashed) → sprint-8 failure kinds stay precise.
-- Executor metadata declares requirements (cpu_cores, gpu...) enforced in can_execute against optional capabilities; scheduler-side compat (S9) remains the routing authority.
-- Second workload needed new coordinator reference math (stats_range); unknown types already flow to unsupported_workload (422) unchanged.
+- Conventions: empty requirements = runs anywhere (legacy workers, unrestricted jobs); non-empty requirements with no reported profile = incompatible (fail closed).
+- Two bugs caught by tests before commit: (1) default-populated requirements dict was truthy-but-vacuous → `exclude_unset` when persisting; (2) compat treated vacuous dicts as real requirements → normalize None/False before matching.
+- Filtering happens per-candidate at claim time, O(queue) — fine for prototype; Sprint 31 scoring will want precomputed match sets.
+- `gpu: false` is not a "CPU-only" flag in the matching sense — it simply doesn't constrain; CPU-only jobs are expressed with `cpu_cores`/`ram_mb`.
 **Next steps:**
-- Sprint 14: first real AI workload (embeddings recommended) through this same pipeline.
+- Sprint 10: hardware tiers + capability explanation (scheduler says why).
 - Two-machine E2E still pending (see quick-reference.md).
-
----
-
-## 2026-10-11 — Sprint 12: Resource Monitoring
-**Goal:** Continuous local awareness; high-load auto-transitions available → throttled (roadmap Sprint 12).
+## 2026-10-11 — Sprint 10: Hardware Tiers
+**Goal:** Formalize capability classes; scheduler explains compatibility (roadmap Sprint 10, milestone M3).
 **Scope (in / out):**
-- In (Full Sprint 12): worker_resource_samples table + endpoints, one-sample-per-tick pipeline (telemetry + gate + heartbeat), availability object with reason, throttled status, policy re-read per tick, gpu_stats single-call helper.
-- Out: execution-limit enforcement (guide §18 separate control, later), dashboard (S16), process enumeration (guide §17: measurable signals only), history retention policy.
-**Exit condition (verbatim from roadmap):** Run a high-load application and observe the Worker automatically transition from available to unavailable/throttled according to policy.
+- In (Full Sprint 10): per-axis H1/H2/H3 tiers (GPU/CPU/RAM), tiers on worker detail, `GET /jobs/{id}/compatibility/{wid}` explanation endpoint with per-dimension rows, score stubs exported for Sprint 31 (not wired).
+- Out: score-driven scheduling (S31), benchmarked tiers (guide §9), policy-aware routing (S11), dashboard visualization (S16).
+**Exit condition (verbatim from roadmap):** The two prototype machines receive different hardware capability profiles and the scheduler can explain why a Work Unit is or is not compatible.
 **Changes:**
-- Coordinator: models/sample.py (worker_resource_samples), schemas/sample.py, api/resources.py (POST/GET /workers/{id}/resources), Heartbeat.availability {available,paused,reason} replaces the bare bool, heartbeat → status online|throttled|paused, availability._EXPLICIT += throttled
-- Worker: worker/gpu_stats.py (single nvidia-smi query), monitoring.py (build_report/report_resources), state sampler uses shared helper, main loop: policy reload per tick + one sample per tick + `--heartbeat-interval`
-- tests: test_resources.py (8), test_monitoring.py (6), wiring tests restructured for the new cadence
+- Coordinator: services/tiers.py (gpu_tier/cpu_tier/ram_tier + hardware_tiers; VRAM bands 4/12GB, core bands 4/8, RAM bands 8/32GB; integrated/undetected → H1; best GPU wins), services/explain.py (per-check rows: dimension/need/have/passed/reason), api/jobs.py (compatibility endpoint), api/workers.py (tiers in _to_out), schemas/worker.py (+tiers)
+- tests: test_tiers.py (9), test_explain.py (8)
+- quick-reference.md (tiers + explanation endpoints)
 **Tests run:**
-- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 196 passed
-- random order → 196 passed
-- Live: policy {max_cpu_percent: 0} → status **throttled**, log "holding off work: cpu X% > limit 0.0%", job stayed queued (0 claims); policy {} → **online**, job completed (2/2); 8 telemetry samples accumulated — pass
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 147 passed
+- random order → 147 passed
+- Live: worker detail tiers `{'gpu': 'H1', 'cpu': 'H2', 'ram': 'H2'}` (RX 6400 4GB/6c/16GB); amd-GPU job → compatible, gpu row passed; nvidia-24GB job → incompatible, precise reason row — pass
 **Decisions:**
-- Policy file re-read each tick (cheap JSON read; corrupt → defaults) so contributor edits apply within one tick — live check caught startup-only loading first.
-- Status vocabulary: online | throttled (policy denies) | paused (explicit) | offline (heartbeat timeout); throttled is explicit so it isn't mis-derived.
-- One nvidia-smi call + one CPU sample per tick shared by telemetry/policy/heartbeat (previously two).
-- Telemetry POST failures are swallowed (None return) — monitoring must never break the work loop.
+- Boundary convention: `<= floor` → H1 (a 4GB GPU is H1, 12GB is H2) — band label covers the lower bound inclusively; tests + quick-reference document the bands.
+- `gpu: None` distinguishes "has no GPU" from cpu/ram's `unknown` (no data); API surfaces H1/H2/H3/unknown.
+- Score functions exported but unused: Sprint 31 wiring must come after compatibility correctness is proven (roadmap: no scoring until proven).
 **Next steps:**
-- Sprint 13: workload adapter system (registry + lifecycle) — prepare for real AI workloads.
+- Sprint 11: contributor policy engine (idle-only, CPU/GPU %, temperature ceiling, battery, schedule, pause).
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---
@@ -381,50 +378,78 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
-## 2026-10-11 — Sprint 10: Hardware Tiers
-**Goal:** Formalize capability classes; scheduler explains compatibility (roadmap Sprint 10, milestone M3).
+## 2026-10-11 — Sprint 12: Resource Monitoring
+**Goal:** Continuous local awareness; high-load auto-transitions available → throttled (roadmap Sprint 12).
 **Scope (in / out):**
-- In (Full Sprint 10): per-axis H1/H2/H3 tiers (GPU/CPU/RAM), tiers on worker detail, `GET /jobs/{id}/compatibility/{wid}` explanation endpoint with per-dimension rows, score stubs exported for Sprint 31 (not wired).
-- Out: score-driven scheduling (S31), benchmarked tiers (guide §9), policy-aware routing (S11), dashboard visualization (S16).
-**Exit condition (verbatim from roadmap):** The two prototype machines receive different hardware capability profiles and the scheduler can explain why a Work Unit is or is not compatible.
+- In (Full Sprint 12): worker_resource_samples table + endpoints, one-sample-per-tick pipeline (telemetry + gate + heartbeat), availability object with reason, throttled status, policy re-read per tick, gpu_stats single-call helper.
+- Out: execution-limit enforcement (guide §18 separate control, later), dashboard (S16), process enumeration (guide §17: measurable signals only), history retention policy.
+**Exit condition (verbatim from roadmap):** Run a high-load application and observe the Worker automatically transition from available to unavailable/throttled according to policy.
 **Changes:**
-- Coordinator: services/tiers.py (gpu_tier/cpu_tier/ram_tier + hardware_tiers; VRAM bands 4/12GB, core bands 4/8, RAM bands 8/32GB; integrated/undetected → H1; best GPU wins), services/explain.py (per-check rows: dimension/need/have/passed/reason), api/jobs.py (compatibility endpoint), api/workers.py (tiers in _to_out), schemas/worker.py (+tiers)
-- tests: test_tiers.py (9), test_explain.py (8)
-- quick-reference.md (tiers + explanation endpoints)
+- Coordinator: models/sample.py (worker_resource_samples), schemas/sample.py, api/resources.py (POST/GET /workers/{id}/resources), Heartbeat.availability {available,paused,reason} replaces the bare bool, heartbeat → status online|throttled|paused, availability._EXPLICIT += throttled
+- Worker: worker/gpu_stats.py (single nvidia-smi query), monitoring.py (build_report/report_resources), state sampler uses shared helper, main loop: policy reload per tick + one sample per tick + `--heartbeat-interval`
+- tests: test_resources.py (8), test_monitoring.py (6), wiring tests restructured for the new cadence
 **Tests run:**
-- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 147 passed
-- random order → 147 passed
-- Live: worker detail tiers `{'gpu': 'H1', 'cpu': 'H2', 'ram': 'H2'}` (RX 6400 4GB/6c/16GB); amd-GPU job → compatible, gpu row passed; nvidia-24GB job → incompatible, precise reason row — pass
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 196 passed
+- random order → 196 passed
+- Live: policy {max_cpu_percent: 0} → status **throttled**, log "holding off work: cpu X% > limit 0.0%", job stayed queued (0 claims); policy {} → **online**, job completed (2/2); 8 telemetry samples accumulated — pass
 **Decisions:**
-- Boundary convention: `<= floor` → H1 (a 4GB GPU is H1, 12GB is H2) — band label covers the lower bound inclusively; tests + quick-reference document the bands.
-- `gpu: None` distinguishes "has no GPU" from cpu/ram's `unknown` (no data); API surfaces H1/H2/H3/unknown.
-- Score functions exported but unused: Sprint 31 wiring must come after compatibility correctness is proven (roadmap: no scoring until proven).
+- Policy file re-read each tick (cheap JSON read; corrupt → defaults) so contributor edits apply within one tick — live check caught startup-only loading first.
+- Status vocabulary: online | throttled (policy denies) | paused (explicit) | offline (heartbeat timeout); throttled is explicit so it isn't mis-derived.
+- One nvidia-smi call + one CPU sample per tick shared by telemetry/policy/heartbeat (previously two).
+- Telemetry POST failures are swallowed (None return) — monitoring must never break the work loop.
 **Next steps:**
-- Sprint 11: contributor policy engine (idle-only, CPU/GPU %, temperature ceiling, battery, schedule, pause).
+- Sprint 13: workload adapter system (registry + lifecycle) — prepare for real AI workloads.
 - Two-machine E2E still pending (see quick-reference.md).
 
 ---
 
-## 2026-10-11 — Sprint 9: Scheduler Compatibility
-**Goal:** Stop treating every machine as identical — route only compatible work (roadmap Sprint 9).
+## 2026-10-11 — Sprint 13: Workload Adapter System
+**Goal:** Scheduler separated from workload implementation (roadmap Sprint 13).
 **Scope (in / out):**
-- In (Full Sprint 9): declarative Requirements schema on jobs, worker profile lookup at claim time, compat filter in claim path, runtimes in capabilities, routing tests.
-- Out: H1/H2/H3 tiers + explanation endpoint (S10), scoring (S31), policy-aware routing (S11), runtime capability *probes* (benchmarks — guide §9).
-**Exit condition (verbatim from roadmap):** Create two Work Unit types (CPU-only, GPU-required). The scheduler sends each only to compatible Workers.
+- In (Full Sprint 13): WorkloadExecutor interface (metadata, can_execute, prepare/execute/verify/cleanup), worker registry + run_unit lifecycle runner, hello-compute refactored onto the interface, second workload stats_range (both sides), coordinator verification dispatch via workload registry.
+- Out: embeddings/image executors (S14), model cache (S15), sandboxing (S22).
+**Exit condition (verbatim from roadmap):** Two different workload implementations run through the same scheduler without scheduler-specific branching.
 **Changes:**
-- Coordinator: schemas/job.py (Requirements extra="forbid" — typo'd keys rejected 422; JobCreate.requirements; JobOut/JobStatusOut echo), models/job.py (+requirements JSON), services/compat.py (check() in architecture §10 order: CPU → RAM → OS → runtime → GPU vendor/VRAM), services/jobs.py (requirements stored), services/work.py (claim filters candidates by worker's stored profile; same-worker duplicate skip kept), api/jobs.py (status echoes verify_sample/requirements), version → 0.1.0-sprint9
-- Worker: capabilities schema +discover +runtimes (executor registry), worker/__init__.py path bootstrap (robust standalone `packages.protocol` import)
-- tests: test_compat.py (16), test_claim_routing.py (8), test_discover runtimes
-- quick-reference.md requirements snippets
+- Worker: worker/execution/executor.py (interface + lifecycle runner + ExecutorMetadata), registry.py (executor_for/list_executors/supported_runtimes/run_unit), hello_compute.py (interface impl; public compute/output_hash unchanged), stats_range.py (new workload, dict payload, own verify), main.py run_unit wiring, capabilities discover → runtimes from registry
+- Coordinator: services/workloads/__init__.py (expected()/output_hash() dispatch), services/workloads/stats_range.py (reference), services/work.py (_classify dispatches by workload_type)
+- tests: test_executor.py (rewritten: 16), test_workload_registry.py (6)
 **Tests run:**
-- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 129 passed
-- random order → 129 passed
-- Live: both workers report runtimes ['hello_compute']; CPU-only job (4 units) → **completed** final=10 across both workers; amd-GPU job (2) → **completed** final=3; nvidia-GPU job → stays **queued** (correctly starves both workers) — pass
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 207 passed
+- random order → 207 passed
+- Live: worker advertises runtimes [hello_compute, stats_range]; both job types claimed+executed+**verified** through the same endpoint (values 1, 2 scalar and {'count':1,...} dicts); both jobs draining (snapshot at +12s: 2/4 and 2/3, zero failures) — pass
 **Decisions:**
-- Conventions: empty requirements = runs anywhere (legacy workers, unrestricted jobs); non-empty requirements with no reported profile = incompatible (fail closed).
-- Two bugs caught by tests before commit: (1) default-populated requirements dict was truthy-but-vacuous → `exclude_unset` when persisting; (2) compat treated vacuous dicts as real requirements → normalize None/False before matching.
-- Filtering happens per-candidate at claim time, O(queue) — fine for prototype; Sprint 31 scoring will want precomputed match sets.
-- `gpu: false` is not a "CPU-only" flag in the matching sense — it simply doesn't constrain; CPU-only jobs are expressed with `cpu_cores`/`ram_mb`.
+- Lifecycle order **prepare → validate → execute → verify → cleanup** (verify before cleanup: verifier may need scratch state) — first draft had cleanup in finally-before-verify; test caught it.
+- Stage failures map to failed UnitResults with distinct prefixes (prepare failed / rejected / execution error / verify crashed) → sprint-8 failure kinds stay precise.
+- Executor metadata declares requirements (cpu_cores, gpu...) enforced in can_execute against optional capabilities; scheduler-side compat (S9) remains the routing authority.
+- Second workload needed new coordinator reference math (stats_range); unknown types already flow to unsupported_workload (422) unchanged.
 **Next steps:**
-- Sprint 10: hardware tiers + capability explanation (scheduler says why).
+- Sprint 14: first real AI workload (embeddings through this same pipeline) (done below).
 - Two-machine E2E still pending (see quick-reference.md).
+
+---
+
+## 2026-10-11 — Sprint 14: First Real AI Workload (M4)
+**Goal:** A real AI workload — embeddings — divided into batches, processed by compatible machines, verified by re-derivation (roadmap Sprint 14, milestone M4).
+**Scope (in / out):**
+- In (Full Sprint 14): Embedder adapter interface + HashingEmbedder, EmbeddingsExecutor, deterministic synthetic corpus, coordinator reference math + registry dispatch, metrics in results, tests.
+- Out: model-backed embedders (need model cache, Sprint 15), real corpus fetch (Sprint 15), batch-size autotuning, embedding aggregation (counts only for AI jobs).
+**Exit condition (verbatim from roadmap):** A real AI Job is divided into multiple Work Units and processed by the available compatible machines.
+**Changes:**
+- Worker: worker/execution/embeddings/{embedder,executor}.py (Embedder protocol, HashingEmbedder L2-normalized dim-configurable, deterministic corpus_text, executor batch + local verify), registry +1 workload, UnitResult.metrics, main.py forwards executor metrics
+- Coordinator: services/workloads/embeddings.py (identical reference math), __init__.py expected()/output_hash() take params (dim), work.py passes job params
+- tests: worker test_embeddings_executor.py (11: determinism, normalization, tamper catch, cross-side parity via importlib), coordinator test_embeddings.py (3: verified batch, tamper rejected, two-worker split), registry dispatch tests
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 224 passed
+- random order → 224 passed
+- Live M4: embeddings job (40 docs, 4x10 batches, dim 64) → **completed** 4/4 verified; per-unit execution_ms 0.7-0.9ms recorded — pass
+**Decisions:**
+- Hashing (feature-hash) embedder chosen over a downloaded model: zero-download prototype, deterministic (verification exact), and the Embedder interface means a sentence-transformers/ONNX backend slots in without scheduler changes (documented in code + quick-reference).
+- Corpus is synthetic/deterministic (documented everywhere); coordinator re-derives vectors, so tampering is caught exactly like hello-compute mismatches.
+- Duplicate file-basename lesson: two `test_embeddings.py` collide under pytest's rootdir collection (no test __init__ packages) → worker file renamed `test_embeddings_executor.py`.
+- Executor-provided `metrics` (docs, dim) merged into result metrics so performance data rides the existing Result path.
+**Next steps:**
+- Sprint 15: model cache (manifests, versions, reuse, scheduler preference for cached workers).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+

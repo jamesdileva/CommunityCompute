@@ -201,7 +201,7 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
         "value": result.value,
         "output_hash": result.output_hash,
         "error": result.error,
-        "metrics": {"execution_ms": result.execution_ms},
+        "metrics": {**(result.metrics or {}), "execution_ms": result.execution_ms},
     }
     try:
         submitted = submit_result(coordinator_url, unit_id, body, timeout=timeout)

@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 13 — workload adapter system (two workloads, one scheduler-agnostic pipeline). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 14 — first real AI workload (embeddings, M4: real AI compute). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 

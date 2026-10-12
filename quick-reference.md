@@ -111,6 +111,15 @@ def sub(t, p, n):
 print('hello_compute:', sub('hello_compute', {'op': 'sum'}, 4))
 print('stats_range  :', sub('stats_range', {}, 3))
 "@
+# First AI workload (Sprint 14): deterministic embeddings over a synthetic corpus
+python -c @"
+import httpx
+jid = httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type': 'embeddings',
+    'params': {'dim': 64}, 'total_units': 40, 'chunk_size': 10}, timeout=5).json()['id']
+print('embeddings  :', jid)
+"@
+# embedder is adapter-based (worker/execution/embeddings/embedder.py): a model-backed
+# embedder replaces HashingEmbedder behind the same signature (model cache: Sprint 15)
 # GET /workers/{id} -> capabilities.runtimes lists what the worker can execute
 # GET /workers/{id}            -> status: online | throttled | paused | offline
 # GET /workers/{id}/resources  -> newest telemetry samples (cpu %, ram, gpu %, vram, temp)

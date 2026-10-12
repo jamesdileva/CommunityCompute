@@ -34,6 +34,23 @@ def test_hash_of_both_workloads():
     assert hello != stats
 
 
+def test_expected_embeddings_batch():
+    batch = expected("embeddings", "sum", 1, 3, {"dim": 32})
+    assert batch["dim"] == 32
+    assert len(batch["vectors"]) == 3
+    assert all(len(v) == 32 for v in batch["vectors"])
+
+
+def test_expected_embeddings_default_dim():
+    batch = expected("embeddings", "sum", 1, 1)
+    assert batch["dim"] == 128 and len(batch["vectors"][0]) == 128
+
+
 def test_hash_of_unknown_type_raises():
     with pytest.raises(ValueError):
         workload_hash("totally_unknown", "sum", 1)
+
+
+def test_hash_of_embeddings():
+    h = workload_hash("embeddings", "sum", {"vectors": [[0.1]]}, {"dim": 8})
+    assert isinstance(h, str) and len(h) == 64

@@ -25,6 +25,7 @@ class UnitResult:
     output_hash: str | None = None
     error: str | None = None
     execution_ms: float | None = None
+    metrics: dict | None = None  # workload-side measurements (docs, dim, ...)
 
 
 @dataclass

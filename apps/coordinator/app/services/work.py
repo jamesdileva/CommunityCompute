@@ -207,7 +207,8 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
         # original, not re-derivation of the expectation.
         original_result = db.get(Result, unit.verify_of)
         original_value = original_result.value if original_result else None
-    ok, kind, error = _classify(payload, unit, workload_type, op, original_value)
+    ok, kind, error = _classify(payload, unit, workload_type, op, original_value,
+                                job_params=(job.params or {}) if job else {})
 
     execution_ms = _as_float(payload.metrics.get("execution_ms"))
     result = existing or Result(work_unit_id=work_unit_id)
@@ -245,7 +246,8 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
 
 
 def _classify(payload: WorkResult, unit: WorkUnit, workload_type: str, op: str,
-              original_value: object = None) -> tuple[bool, str | None, str | None]:
+              original_value: object = None,
+              job_params: dict | None = None) -> tuple[bool, str | None, str | None]:
     """Classify a result: (accepted, failure_kind, message).
 
     Duplicates are judged on reproduction: a value differing from the
@@ -266,7 +268,8 @@ def _classify(payload: WorkResult, unit: WorkUnit, workload_type: str, op: str,
             return False, HASH_MISMATCH, "output hash mismatch (corrupted result)"
         return True, None, None
     try:
-        expected = workload_expected(workload_type, op, unit.range_start, unit.range_end)
+        expected = workload_expected(workload_type, op, unit.range_start, unit.range_end,
+                                     job_params)
     except ValueError as exc:
         return False, UNSUPPORTED_WORKLOAD, str(exc)
     if payload.value != expected:

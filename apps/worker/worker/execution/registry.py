@@ -4,6 +4,7 @@ The registry is the only place that knows about individual workloads —
 everything upstream (scheduler, coordinator protocol) stays generic.
 """
 
+from worker.execution.embeddings.executor import EmbeddingsExecutor
 from worker.execution.executor import UnitResult, WorkloadExecutor
 from worker.execution.hello_compute import HelloComputeExecutor
 from worker.execution.stats_range import StatsRangeExecutor
@@ -11,6 +12,7 @@ from worker.execution.stats_range import StatsRangeExecutor
 _EXECUTORS: dict[str, WorkloadExecutor] = {
     HelloComputeExecutor.workload_type: HelloComputeExecutor(),
     StatsRangeExecutor.workload_type: StatsRangeExecutor(),
+    EmbeddingsExecutor.workload_type: EmbeddingsExecutor(),
 }
 
 
