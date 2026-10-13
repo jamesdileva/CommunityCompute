@@ -103,6 +103,14 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # Heartbeats ride the socket while connected, HTTP POST when down (never both).
 # Operator pause/resume also pushes a pause/resume frame down the socket.
 
+# TLS internet prototype (Sprint 19): coordinator serves TLS, worker dials out (no inbound ports)
+python scripts/gen_dev_cert.py --out dev-tls   # dev self-signed cert (openssl/cryptography); NOT for production
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8443 --app-dir apps/coordinator --ssl-certfile dev-tls.pem --ssl-keyfile dev-tls.key
+python apps/worker/worker/main.py --coordinator-url https://127.0.0.1:8443 --ca-bundle dev-tls.pem --loop
+# --insecure skips verification (dev LAN only, prints a warning). Real deployments use a
+# proper CA or a private network/VPN (see implementation-guide); worker auth lands in Sprint 20.
+# Remote logging = coordinator logs (uvicorn access + worker heartbeats/results, incl. WS peer IP).
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

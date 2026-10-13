@@ -8,6 +8,7 @@ def claim_work(
     worker_id: str,
     cached_models: list[str] | None = None,
     timeout: float = 5.0,
+    verify: bool | str = True,
 ) -> dict | None:
     """POST /work/{worker_id}/claim — sweeps expired leases, then FIFO claims.
 
@@ -16,13 +17,15 @@ def claim_work(
     Returns the assignment (with lease fields) or None when no work is queued.
     """
     url = f"{coordinator_url.rstrip('/')}/work/{worker_id}/claim"
-    resp = httpx.post(url, json={"cached_models": cached_models or []}, timeout=timeout)
+    resp = httpx.post(url, json={"cached_models": cached_models or []},
+                      timeout=timeout, verify=verify)
     resp.raise_for_status()
     return resp.json() or None
 
 
 def submit_result(
-    coordinator_url: str, work_unit_id: str, result_payload: dict, timeout: float = 5.0
+    coordinator_url: str, work_unit_id: str, result_payload: dict, timeout: float = 5.0,
+    verify: bool | str = True,
 ) -> dict:
     """POST /work/{work_unit_id}/result.
 
@@ -30,7 +33,7 @@ def submit_result(
     or a late result after lease expiry) — caller treats that as handled.
     """
     url = f"{coordinator_url.rstrip('/')}/work/{work_unit_id}/result"
-    resp = httpx.post(url, json=result_payload, timeout=timeout)
+    resp = httpx.post(url, json=result_payload, timeout=timeout, verify=verify)
     if resp.status_code == 409:
         return {"status": "already_completed"}
     resp.raise_for_status()

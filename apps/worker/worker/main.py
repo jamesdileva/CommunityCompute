@@ -32,6 +32,7 @@ import httpx  # noqa: E402
 from worker.config import (  # noqa: E402
     get_coordinator_url,
     get_or_create_worker_id,
+    get_tls_verify,
     get_worker_id_file,
 )
 from worker.registration import build_payload, register_worker  # noqa: E402
@@ -55,10 +56,14 @@ from worker.capabilities.discover import cached_models  # noqa: E402
 from worker.ws_client import ws_loop  # noqa: E402
 
 
-def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
+def ping_coordinator(
+    coordinator_url: str, worker_id: str, timeout: float = 5.0,
+    verify: bool | str = True,
+) -> dict:
     """GET /health on the coordinator. Diagnostic helper (Sprint 0); raises on failure."""
     url = f"{coordinator_url.rstrip('/')}/health"
-    resp = httpx.get(url, timeout=timeout, headers={"X-Worker-Id": worker_id})
+    resp = httpx.get(url, timeout=timeout, headers={"X-Worker-Id": worker_id},
+                     verify=verify)
     resp.raise_for_status()
     return resp.json()
 
@@ -92,25 +97,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-ws", action="store_true",
                    help="Disable the WebSocket control socket (Sprint 17); "
                         "heartbeat stays on HTTP and work polls on --interval")
+    p.add_argument("--ca-bundle", default=None,
+                   help="TLS CA bundle PEM trusting the coordinator (Sprint 19); "
+                        "default is the platform trust store")
+    p.add_argument("--insecure", action="store_true",
+                   help="DEV ONLY: skip TLS verification (self-signed certs). "
+                        "Never use outside a test network.")
     pause = p.add_mutually_exclusive_group()
     pause.add_argument("--pause", action="store_true", help="Persist paused=true and exit")
     pause.add_argument("--resume", action="store_true", help="Persist paused=false and exit")
     return p.parse_args(argv)
 
 
-def _attempt_register(coordinator_url: str, payload: dict, timeout: float) -> dict | None:
+def _attempt_register(coordinator_url: str, payload: dict, timeout: float,
+                       verify: bool | str = True) -> dict | None:
     try:
-        return register_worker(coordinator_url, payload, timeout=timeout)
+        return register_worker(coordinator_url, payload, timeout=timeout, verify=verify)
     except Exception as exc:  # noqa: BLE001 — startup diagnostics, refined with logging later
         print(f"[worker {payload['worker_id']}] register FAILED: {exc}", flush=True)
         return None
 
 
-def _attempt_report_capabilities(coordinator_url: str, worker_id: str, timeout: float) -> None:
+def _attempt_report_capabilities(coordinator_url: str, worker_id: str, timeout: float,
+                                 verify: bool | str = True) -> None:
     """Discover + POST this machine's profile. Never fatal to the run (telemetry only)."""
     try:
         profile = discover_capabilities()
-        report_capabilities(coordinator_url, worker_id, profile, timeout=timeout)
+        report_capabilities(coordinator_url, worker_id, profile, timeout=timeout,
+                            verify=verify)
         gpus = ", ".join(
             f"{g.vendor} {g.model} " + (f"{g.vram_mb}MB" if g.vram_mb else "vram?") for g in profile.gpus
         )
@@ -139,12 +153,13 @@ def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float,
 
 
 def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float,
-                       availability: dict | None = None) -> None:
+                       availability: dict | None = None,
+                       verify: bool | str = True) -> None:
     try:
         payload = build_heartbeat_payload(worker_id)
         if availability is not None:
             payload["availability"] = availability
-        body = send_heartbeat(coordinator_url, payload, timeout=timeout)
+        body = send_heartbeat(coordinator_url, payload, timeout=timeout, verify=verify)
         r = payload["resources"]
         print(
             f"[worker {worker_id}] heartbeat ok: cpu={r['cpu_percent']}% "
@@ -183,7 +198,8 @@ def cached_model_names() -> list[str]:
 def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
                         availability: tuple[bool, str] | None = None,
                         execution_delay: float = 0.0,
-                        cached_models: list[str] | None = None) -> None:
+                        cached_models: list[str] | None = None,
+                        verify: bool | str = True) -> None:
     """Claim one unit, execute, submit. All failures logged, never fatal.
 
     `cached_models` is sent with the claim so the coordinator can prefer
@@ -194,7 +210,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
         return
     try:
         assignment = claim_work(coordinator_url, worker_id,
-                                cached_models=cached_models, timeout=timeout)
+                                cached_models=cached_models, timeout=timeout,
+                                verify=verify)
     except Exception as exc:  # noqa: BLE001 - claim failure: retry next tick
         print(f"[worker {worker_id}] work claim FAILED: {exc}", flush=True)
         return
@@ -220,7 +237,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
         "metrics": {**(result.metrics or {}), "execution_ms": result.execution_ms},
     }
     try:
-        submitted = submit_result(coordinator_url, unit_id, body, timeout=timeout)
+        submitted = submit_result(coordinator_url, unit_id, body, timeout=timeout,
+                                  verify=verify)
     except Exception as exc:  # noqa: BLE001 - rejected/lost: move on, sweep will requeue
         print(f"[worker {worker_id}] result submit FAILED: {exc}", flush=True)
         return
@@ -269,6 +287,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
     if args.model_cache_dir:
         os.environ["MODEL_CACHE_DIR"] = args.model_cache_dir
     coordinator_url = get_coordinator_url(args.coordinator_url)
+    tls_verify = get_tls_verify(args.ca_bundle, args.insecure)
     worker_id = get_or_create_worker_id(get_worker_id_file(args.worker_id_file))
     payload = build_payload(worker_id)
     print(
@@ -276,6 +295,9 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
         f"(id file: {get_worker_id_file(args.worker_id_file)})",
         flush=True,
     )
+    if args.insecure:
+        print("[worker] WARNING: --insecure skips TLS verification "
+              "(dev self-signed certs only, never across the open internet)", flush=True)
 
     policy_file = _policy_file(args)
     if args.pause:
@@ -291,11 +313,13 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
         print(f"[worker {worker_id}] policy: paused (pass --resume to unpause)", flush=True)
 
     if not args.loop:
-        result = _attempt_register(coordinator_url, payload, args.timeout)
+        result = _attempt_register(coordinator_url, payload, args.timeout,
+                                   verify=tls_verify)
         if result is None:
             return 1
         if not args.no_capabilities:
-            _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
+            _attempt_report_capabilities(coordinator_url, worker_id, args.timeout,
+                                         verify=tls_verify)
         print(f"[worker {worker_id}] registered: {result}", flush=True)
         return 0
 
@@ -316,6 +340,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                 "heartbeat_interval": heartbeat_interval,
                 "timeout": args.timeout,
                 "policy_file": policy_file,
+                "ca_bundle": args.ca_bundle,
+                "insecure": args.insecure,
             },
             daemon=True,
         )
@@ -326,13 +352,15 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
         while not stop_event.is_set():
             now = time.monotonic()
             if not registered:
-                result = _attempt_register(coordinator_url, payload, args.timeout)
+                result = _attempt_register(coordinator_url, payload, args.timeout,
+                                           verify=tls_verify)
                 if result is None:
                     print(f"[worker {worker_id}] retry in {args.interval}s", flush=True)
                     stop_event.wait(args.interval)
                     continue
                 if not args.no_capabilities:
-                    _attempt_report_capabilities(coordinator_url, worker_id, args.timeout)
+                    _attempt_report_capabilities(coordinator_url, worker_id, args.timeout,
+                                                 verify=tls_verify)
                 registered = True
                 print(f"[worker {worker_id}] registered: {result.get('id')}", flush=True)
                 next_heartbeat = now  # heartbeat immediately after registration
@@ -342,7 +370,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                 policy = load_policy(policy_file)
                 # One sampling pass per tick: telemetry + policy gate + heartbeat payload
                 verdict, availability, report = _availability(policy)
-                report_resources(coordinator_url, worker_id, report, args.timeout)
+                report_resources(coordinator_url, worker_id, report, args.timeout,
+                                 verify=tls_verify)
                 if now >= next_heartbeat:
                     if ws_connected.is_set():
                         # Socket owns the heartbeat cadence while connected
@@ -350,7 +379,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                         next_heartbeat = now + heartbeat_interval
                     else:
                         _attempt_heartbeat(coordinator_url, worker_id, args.timeout,
-                                           availability=availability)
+                                           availability=availability,
+                                           verify=tls_verify)
                         next_heartbeat = now + heartbeat_interval
                     # Capability refresh incl. cached_models when the cache changed
                     cached = cached_models()
@@ -358,13 +388,14 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                         _last_cached = cached
                         if not args.no_capabilities:
                             _attempt_report_capabilities(
-                                coordinator_url, worker_id, args.timeout
+                                coordinator_url, worker_id, args.timeout,
+                                verify=tls_verify,
                             )
                 if not args.no_work:
                     _attempt_work_cycle(
                         coordinator_url, worker_id, args.timeout,
                         availability=verdict, execution_delay=args.execution_delay,
-                        cached_models=cached_model_names(),
+                        cached_models=cached_model_names(), verify=tls_verify,
                     )
             _wait_for_next_tick(stop_event, wake_event, args.interval)
     except KeyboardInterrupt:

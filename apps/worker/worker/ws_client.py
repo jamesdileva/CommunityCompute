@@ -18,6 +18,7 @@ server-side: ``pause``/``resume`` frames are logged locally only.
 from __future__ import annotations
 
 import json
+import ssl
 import threading
 import time
 from pathlib import Path
@@ -26,6 +27,25 @@ from worker.heartbeat import build_heartbeat_payload
 
 BACKOFF_START = 1.0
 BACKOFF_CAP = 8.0
+
+
+def build_ssl_context(
+    ca_bundle: str | Path | None = None, insecure: bool = False
+) -> ssl.SSLContext | None:
+    """TLS context for `wss://` control sockets (Sprint 19).
+
+    Returns None when no TLS customization is needed (plain `ws://` or default
+    trust). `insecure=True` disables verification (dev self-signed only).
+    Otherwise uses the `--ca-bundle` PEM or the platform trust store.
+    """
+    if insecure:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    if ca_bundle is not None:
+        return ssl.create_default_context(cafile=str(ca_bundle))
+    return None
 
 
 def build_ws_url(coordinator_url: str, worker_id: str) -> str:
@@ -106,6 +126,8 @@ def ws_loop(
     heartbeat_interval: float = 20.0,
     timeout: float = 5.0,
     policy_file: Path | None = None,
+    ca_bundle: str | Path | None = None,
+    insecure: bool = False,
 ) -> None:
     """Background thread: hold the control socket, dispatch frames, heartbeat.
 
@@ -117,10 +139,13 @@ def ws_loop(
     from websockets.sync.client import connect
 
     backoff = BACKOFF_START
+    ws_url = build_ws_url(coordinator_url, worker_id)
+    ssl_context = (
+        build_ssl_context(ca_bundle, insecure) if ws_url.startswith("wss://") else None
+    )
     while not stop_event.is_set():
         try:
-            ws = connect(build_ws_url(coordinator_url, worker_id),
-                         open_timeout=timeout)
+            ws = connect(ws_url, open_timeout=timeout, ssl=ssl_context)
         except Exception as exc:  # noqa: BLE001 - coordinator down: retry with backoff
             print(f"[worker {worker_id}] ws connect FAILED: {exc} (retry in {backoff}s)",
                   flush=True)

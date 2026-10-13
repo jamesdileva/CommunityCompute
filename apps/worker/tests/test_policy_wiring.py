@@ -38,7 +38,8 @@ def test_heartbeat_carries_structured_availability(monkeypatch):
     sent: list = []
     monkeypatch.setattr(
         main_mod, "send_heartbeat",
-        lambda url, payload, timeout=None: sent.append(payload) or {"status": "online"},
+        lambda url, payload, timeout=None, verify=True: sent.append(payload)
+        or {"status": "online"},
     )
     main_mod._attempt_heartbeat("http://x", "w1", 5.0, availability={
         "available": False, "paused": False, "reason": "cpu 95% > limit 10%",

@@ -552,3 +552,29 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
+## 2026-10-13 — Sprint 19: Internet Prototype (TLS loop, mocked)
+**Goal:** Move beyond LAN: hosted coordinator, TLS, outbound-only worker, env config, remote logging (roadmap Sprint 19). Mocked locally: no second network available, so the TLS + outbound path is proven against a local https coordinator; real cross-network run stays pending.
+**Scope (in / out):**
+- In: dev-cert generator, worker `--ca-bundle`/`--insecure` through every HTTP client + wss socket, uvicorn TLS serving, WS peer logging, env examples, live https/wss proof.
+- Out: worker authentication/enrollment (explicitly Sprint 20 — no tokens/credentials here), production CA/VPN setup, dashboard changes.
+**Exit condition (verbatim from roadmap):** The two computers can be in different networks and still participate in the same compute pool. — NOT yet demonstrated (single network); the transport it depends on (TLS + outbound-only) is proven. Carried explicitly, not claimed.
+**Changes:**
+- NEW scripts/gen_dev_cert.py (self-signed SAN cert via openssl → cryptography → manual PS instructions; refuses to overwrite)
+- Worker: config.get_tls_verify (insecure wins, else bundle-or-platform-store), `verify` param on register/heartbeat/claim/submit/telemetry/capabilities/ping clients, ws_client.build_ssl_context + ca_bundle/insecure through ws_loop (ssl only for wss), main.py `--ca-bundle`/`--insecure` (+ loud warning) wired everywhere
+- Coordinator: WS connect log gains peer IP (remote-ops visibility); TLS itself terminates at uvicorn (no app change); version → 0.1.0-sprint19
+- tests: test_tls.py (13: verify matrix, per-client forwarding, wss mapping, context shapes); 12 existing httpx fakes gained `verify` passthrough
+- .env.example (https URL + TLS notes), quick-reference TLS section, README status
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 289 passed
+- random order → 289 passed
+- Live (fresh DB, uvicorn `--ssl-certfile/keyfile` :8443): worker `--ca-bundle` loop → online over https, wss control socket up with zero HTTP heartbeats; 4-unit job → **completed, final=10**; `--insecure --once` registers with warning — pass
+**Decisions:**
+- Auth boundary respected per AGENTS.md: transport trust only, no identity/credentials (Sprint 20 owns that). `--insecure` is dev-LAN-only and says so every run.
+- Outbound-only confirmed by construction: worker opens all connections (https + wss); coordinator never dials out. No inbound worker ports needed.
+- Remote logging = coordinator-side logs (uvicorn access + heartbeat/result lines incl. WS peer); no new pipeline — stated, not built.
+**Next steps:**
+- Sprint 20: worker authentication (enrollment tokens, credential rotation, revocation).
+- Cross-network E2E pending (needs hosted coordinator or VPN + real certs).
+
+---
+

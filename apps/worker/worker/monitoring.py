@@ -40,12 +40,13 @@ def build_report(state: MachineState) -> dict:
 
 
 def report_resources(
-    coordinator_url: str, worker_id: str, report: dict, timeout: float = 5.0
+    coordinator_url: str, worker_id: str, report: dict, timeout: float = 5.0,
+    verify: bool | str = True,
 ) -> dict | None:
     """POST the sample. Returns the stored row; None on failure (never raises)."""
     url = f"{coordinator_url.rstrip('/')}/workers/{worker_id}/resources"
     try:
-        resp = httpx.post(url, json=report, timeout=timeout)
+        resp = httpx.post(url, json=report, timeout=timeout, verify=verify)
         resp.raise_for_status()
         return resp.json()
     except Exception:  # noqa: BLE001 - telemetry must never break the loop

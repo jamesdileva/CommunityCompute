@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 18 — stress-tested (240-unit batch correct through worker kills + coordinator restart, mocked two-PC). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 19 — internet prototype (TLS https/wss, outbound-only worker, dev-cert tooling). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
 
 ## Core loop (stable abstraction)
 

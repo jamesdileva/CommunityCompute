@@ -20,7 +20,7 @@ def test_profile_is_complete_and_versioned():
 
 
 def test_report_capabilities_ok(monkeypatch):
-    def fake_post(url, json=None, timeout=None):
+    def fake_post(url, json=None, timeout=None, verify=True):
         assert url.endswith("/capabilities")
         request = httpx.Request("POST", url)
         return httpx.Response(200, json=json, request=request)
@@ -35,7 +35,7 @@ def test_report_capabilities_ok(monkeypatch):
 
 
 def test_report_capabilities_failure_raises(monkeypatch):
-    def fake_post(url, json=None, timeout=None):
+    def fake_post(url, json=None, timeout=None, verify=True):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx, "post", fake_post)

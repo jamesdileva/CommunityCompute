@@ -23,6 +23,21 @@ def get_worker_id_file(explicit: str | None = None) -> Path:
     return Path(os.environ.get("WORKER_ID_FILE", ".worker_id"))
 
 
+def get_tls_verify(
+    ca_bundle: str | None = None, insecure: bool = False
+) -> bool | str:
+    """httpx `verify` argument for TLS (Sprint 19).
+
+    `insecure=True` disables verification (dev self-signed certs only —
+    callers must print a loud warning). Otherwise a `--ca-bundle` path or
+    the platform trust store (`True`). Auth is out of scope (Sprint 20):
+    this is transport trust only.
+    """
+    if insecure:
+        return False
+    return ca_bundle or True
+
+
 def get_or_create_worker_id(id_file: Path) -> str:
     """Load persistent UUID or create+store one. Never derives identity from hostname."""
     if id_file.exists():

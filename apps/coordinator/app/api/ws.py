@@ -45,7 +45,8 @@ async def worker_socket(
         return
     loop = asyncio.get_running_loop()
     registry.register(worker_id, websocket, loop)
-    log.info("ws connected id=%s", worker_id)
+    peer = websocket.client.host if websocket.client else "?"
+    log.info("ws connected id=%s peer=%s", worker_id, peer)
     try:
         while True:
             try:

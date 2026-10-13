@@ -6,7 +6,7 @@ from worker.main import ping_coordinator
 
 
 def test_ping_coordinator_ok(monkeypatch):
-    def fake_get(url, timeout=None, headers=None):
+    def fake_get(url, timeout=None, headers=None, verify=True):
         assert url.endswith("/health")
         assert headers and "X-Worker-Id" in headers
         request = httpx.Request("GET", url)

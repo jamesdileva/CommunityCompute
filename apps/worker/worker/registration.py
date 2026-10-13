@@ -21,9 +21,12 @@ def build_payload(
     }
 
 
-def register_worker(coordinator_url: str, payload: dict, timeout: float = 5.0) -> dict:
+def register_worker(
+    coordinator_url: str, payload: dict, timeout: float = 5.0,
+    verify: bool | str = True,
+) -> dict:
     """POST /workers/register. Returns the coordinator's worker record. Raises on failure."""
     url = f"{coordinator_url.rstrip('/')}/workers/register"
-    resp = httpx.post(url, json=payload, timeout=timeout)
+    resp = httpx.post(url, json=payload, timeout=timeout, verify=verify)
     resp.raise_for_status()
     return resp.json()
