@@ -20,10 +20,8 @@ log = logging.getLogger("coordinator")
 router = APIRouter()
 
 
-@router.post("/workers/{worker_id}/heartbeat", response_model=HeartbeatResponse)
-def receive_heartbeat(
-    worker_id: str, payload: Heartbeat, db: Session = Depends(get_db)
-) -> HeartbeatResponse:
+def apply_heartbeat(worker_id: str, payload: Heartbeat, db: Session) -> HeartbeatResponse:
+    """Shared heartbeat processing for HTTP POST and the WebSocket socket (Sprint 17)."""
     if str(payload.worker_id) != worker_id:
         raise HTTPException(status_code=422, detail={"error": "worker_id mismatch"})
     worker = db.get(Worker, worker_id)
@@ -59,6 +57,13 @@ def receive_heartbeat(
         resources.gpu_percent, resources.ram_available_mb,
     )
     return HeartbeatResponse(status=status, server_time=now.isoformat())
+
+
+@router.post("/workers/{worker_id}/heartbeat", response_model=HeartbeatResponse)
+def receive_heartbeat(
+    worker_id: str, payload: Heartbeat, db: Session = Depends(get_db)
+) -> HeartbeatResponse:
+    return apply_heartbeat(worker_id, payload, db)
 
 
 def _status_from_availability(availability) -> str:

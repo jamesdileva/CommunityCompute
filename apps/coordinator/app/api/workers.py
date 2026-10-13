@@ -14,6 +14,7 @@ from app.schemas.capability import CapabilityProfile
 from app.schemas.worker import WorkerOut, WorkerRegistration
 from app.services.availability import effective_status
 from app.services.tiers import hardware_tiers
+from app.services.ws_registry import registry
 
 log = logging.getLogger("coordinator")
 
@@ -77,6 +78,7 @@ def pause_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
     db.commit()
     db.refresh(worker)
     log.info("worker %s paused by operator", worker_id)
+    registry.send_from_thread(worker_id, {"type": "pause"})
     timeout = get_settings().heartbeat_timeout_seconds
     cap = db.get(WorkerCapability, worker_id)
     return _to_out(worker, effective_status(worker, timeout), cap.profile if cap else None)
@@ -91,6 +93,7 @@ def resume_worker(worker_id: str, db: Session = Depends(get_db)) -> WorkerOut:
     db.commit()
     db.refresh(worker)
     log.info("worker %s resumed by operator", worker_id)
+    registry.send_from_thread(worker_id, {"type": "resume"})
     timeout = get_settings().heartbeat_timeout_seconds
     cap = db.get(WorkerCapability, worker_id)
     return _to_out(worker, effective_status(worker, timeout), cap.profile if cap else None)

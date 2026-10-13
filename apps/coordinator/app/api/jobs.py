@@ -12,6 +12,7 @@ from app.schemas.job import JobCreate, JobOut, JobStatusOut, WorkUnitOut
 from app.services import jobs as job_service
 from app.services import work as work_service
 from app.services.explain import explain
+from app.services.ws_registry import registry
 
 log = logging.getLogger("coordinator")
 
@@ -25,6 +26,7 @@ def submit_job(payload: JobCreate, db: Session = Depends(get_db)) -> JobOut:
         "job created id=%s type=%s total=%d chunk=%d units=%d",
         job.id, job.workload_type, job.total_units, job.chunk_size, len(units),
     )
+    registry.broadcast_from_thread({"type": "work_available", "job_id": job.id})
     return JobOut.model_validate(job)
 
 

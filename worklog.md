@@ -503,3 +503,28 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
+## 2026-10-13 — Sprint 17: WebSocket Control Plane
+**Goal:** A newly-available worker receives a work notification without aggressive polling (roadmap Sprint 17).
+**Scope (in / out):**
+- In (Full Sprint 17): `WS /ws/worker/{id}` (hello + heartbeat-over-socket reusing the HTTP handler), connection registry with thread-safe fan-out, `work_available` broadcast on job submit, pause/resume frames on operator action, worker `ws_client` (background thread, wake-event, capped-backoff reconnect, `--no-ws`), HTTP fallback when the socket is down, tests + live proof.
+- Out: WebSocket dashboard updates (dashboard keeps 5s polling), WS auth (S20), cancel messages (no cancel endpoint exists yet), per-job downstream fan-out beyond submit broadcast.
+**Exit condition (verbatim from roadmap):** A newly available Worker receives a work notification without requiring aggressive polling.
+**Changes:**
+- Coordinator: app/api/ws.py (hello → hello_ack + liveness touch; heartbeat → shared `apply_heartbeat` with HTTP POST, refactored out of `receive_heartbeat`; unknown worker → 4404 close), app/services/ws_registry.py (worker_id → socket+loop, `send`/`send_from_thread`/`broadcast_from_thread`), api/jobs.py (submit broadcasts `work_available`), api/workers.py (pause/resume push frames), main.py mounts router, requirements.txt +websockets, version → 0.1.0-sprint17
+- Worker: worker/ws_client.py (URL builder, hello/heartbeat message builders, `dispatch_message` wake-on-`work_available`, `next_backoff` 1s→8s cap, `ws_loop` thread: hello → recv/dispatch → socket heartbeats → reconnect), main.py (`--no-ws`, wake/ws_connected events, `_wait_for_next_tick` single wake-based wait per tick, HTTP heartbeat skipped while socket owns cadence, signal handler breaks the sleep)
+- tests: coordinator test_ws.py (8: hello_ack, heartbeat reuse + last_seen, bad-shape/type errors, 4404 refusal, pause/resume + submit wiring via monkeypatch, registry send/unregister), worker test_ws_client.py (17: URL/message shapes, dispatch incl. wake, backoff cap, wait helper, hello-rejection reconnect regression, HTTP-skip-while-connected wiring)
+- quick-reference.md (control-socket section), README status
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 275 passed
+- random order → 275 passed
+- Live (fresh DB, worker `--interval 30 --heartbeat-interval 5`): 1-unit job → **completed in 2.1s** (notification, not polling); coordinator logged socket heartbeats while worker sent zero over HTTP (exactly one channel); operator pause frame arrived over WS; kill → restart → reconnect → second job completed — pass
+**Decisions:**
+- WS is control/notification only; claim/execute/submit stay HTTP (idempotent, proven) — the socket buys latency, not a second transport.
+- One heartbeat per interval, never both: main loop skips HTTP POST while `ws_connected` is set; the socket thread owns cadence (same policy-derived availability payload).
+- Resumed mid-sprint session from opencode DB (`ses_ed7bb365...`, Sprint 16 done + Sprint 17 WIP: `apply_heartbeat` refactor + `ws_registry.py` already started); continued from there.
+**Next steps:**
+- Sprint 18: two-PC stress test (sustained load, throughput/failure-rate, repeated restarts).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+

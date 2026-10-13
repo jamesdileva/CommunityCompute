@@ -52,6 +52,7 @@ from worker.policy.store import (  # noqa: E402
 from worker.monitoring import build_report, report_resources  # noqa: E402
 from worker.models.cache import default_cache_dir, ModelCache  # noqa: E402
 from worker.capabilities.discover import cached_models  # noqa: E402
+from worker.ws_client import ws_loop  # noqa: E402
 
 
 def ping_coordinator(coordinator_url: str, worker_id: str, timeout: float = 5.0) -> dict:
@@ -88,6 +89,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--policy-file", default=None, help="Availability policy JSON path")
     p.add_argument("--model-cache-dir", default=None,
                    help="Model cache directory (default: MODEL_CACHE_DIR or <idfile-dir>/models)")
+    p.add_argument("--no-ws", action="store_true",
+                   help="Disable the WebSocket control socket (Sprint 17); "
+                        "heartbeat stays on HTTP and work polls on --interval")
     pause = p.add_mutually_exclusive_group()
     pause.add_argument("--pause", action="store_true", help="Persist paused=true and exit")
     pause.add_argument("--resume", action="store_true", help="Persist paused=false and exit")
@@ -224,12 +228,44 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
         print(f"[worker {worker_id}] unit {unit_id} already completed elsewhere", flush=True)
 
 
-def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
+def _wait_for_next_tick(stop_event: threading.Event, wake_event: threading.Event,
+                        interval: float) -> None:
+    """Sleep until the next tick, a `work_available` wake, or stop.
+
+    One `wake_event.wait(interval)` per tick: the wake doubles as the sleep, so
+    a notification interrupts even a long `--interval 30` immediately (Sprint 17
+    exit condition — claim within ~1s, no aggressive polling). A consumed wake
+    is cleared. A non-blocking `stop_event.wait(0)` preserves the per-tick
+    stop-event poll cadence from Sprint 12. The signal handler sets both events,
+    so Ctrl+C always breaks the sleep promptly.
+    """
+    if stop_event.is_set():
+        return
+    if wake_event.wait(interval):
+        wake_event.clear()
+    stop_event.wait(0)
+
+
+def run_worker(args: argparse.Namespace, stop_event: threading.Event,
+               wake_event: threading.Event | None = None,
+               ws_connected: threading.Event | None = None,
+               ws_loop_fn=None) -> int:
     """Startup: register + capabilities (once). Then loop: heartbeat → work (Sprints 4/6).
 
     Policy gate (Sprint 11): each work cycle consults the contributor's
     availability policy first; when it denies, no work is claimed.
+
+    Control socket (Sprint 17): when `ws_loop_fn` is given (production passes
+    `ws_loop`) and `--no-ws` is not set, a background thread holds
+    `/ws/worker/{id}`. `work_available` frames set `wake_event` (immediate
+    tick via `_wait_for_next_tick`); while `ws_connected` is set the socket
+    owns the heartbeat cadence and the HTTP POST is skipped (never both).
+    Unit tests omit `ws_loop_fn` → no thread, pure HTTP behavior.
     """
+    if wake_event is None:
+        wake_event = threading.Event()
+    if ws_connected is None:
+        ws_connected = threading.Event()
     if args.model_cache_dir:
         os.environ["MODEL_CACHE_DIR"] = args.model_cache_dir
     coordinator_url = get_coordinator_url(args.coordinator_url)
@@ -267,6 +303,24 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
     heartbeat_interval = max(args.heartbeat_interval, args.interval)
     next_heartbeat = 0.0
     _last_cached = cached_models()  # re-report capabilities when this changes
+    ws_thread = None
+    if args.loop and ws_loop_fn is not None and not args.no_ws:
+        ws_thread = threading.Thread(
+            target=ws_loop_fn,
+            kwargs={
+                "coordinator_url": coordinator_url,
+                "worker_id": worker_id,
+                "stop_event": stop_event,
+                "ws_connected": ws_connected,
+                "wake_event": wake_event,
+                "heartbeat_interval": heartbeat_interval,
+                "timeout": args.timeout,
+                "policy_file": policy_file,
+            },
+            daemon=True,
+        )
+        ws_thread.start()
+        print(f"[worker {worker_id}] control socket on (ws); --no-ws to disable", flush=True)
     try:
         registered = False
         while not stop_event.is_set():
@@ -290,9 +344,14 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
                 verdict, availability, report = _availability(policy)
                 report_resources(coordinator_url, worker_id, report, args.timeout)
                 if now >= next_heartbeat:
-                    _attempt_heartbeat(coordinator_url, worker_id, args.timeout,
-                                       availability=availability)
-                    next_heartbeat = now + heartbeat_interval
+                    if ws_connected.is_set():
+                        # Socket owns the heartbeat cadence while connected
+                        # (Sprint 17: one heartbeat per interval, never both).
+                        next_heartbeat = now + heartbeat_interval
+                    else:
+                        _attempt_heartbeat(coordinator_url, worker_id, args.timeout,
+                                           availability=availability)
+                        next_heartbeat = now + heartbeat_interval
                     # Capability refresh incl. cached_models when the cache changed
                     cached = cached_models()
                     if cached != _last_cached:
@@ -307,7 +366,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
                         availability=verdict, execution_delay=args.execution_delay,
                         cached_models=cached_model_names(),
                     )
-            stop_event.wait(args.interval)
+            _wait_for_next_tick(stop_event, wake_event, args.interval)
     except KeyboardInterrupt:
         print(f"[worker {worker_id}] interrupted", flush=True)
     print(f"[worker {worker_id}] stopped", flush=True)
@@ -317,10 +376,13 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     stop_event = threading.Event()
+    wake_event = threading.Event()
+    ws_connected = threading.Event()
 
     def _handle_signal(signum: int, _frame: object) -> None:
         print(f"[worker] signal {signum} - shutting down", flush=True)
         stop_event.set()
+        wake_event.set()  # break the tick sleep immediately
 
     signal.signal(signal.SIGINT, _handle_signal)
     for sig_name in ("SIGTERM", "SIGBREAK"):
@@ -331,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
             except (OSError, ValueError):
                 pass  # not deliverable on this platform
 
-    return run_worker(args, stop_event)
+    return run_worker(args, stop_event, wake_event, ws_connected, ws_loop_fn=ws_loop)
 
 
 if __name__ == "__main__":

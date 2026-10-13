@@ -96,6 +96,13 @@ npm run dev      # -> http://127.0.0.1:5173 (5s auto-refresh)
 # Pause button is ENFORCEMENT: a paused worker gets no work claims
 # (worker-side control remains --pause/--resume + policy.json)
 
+# Control socket (Sprint 17): automatic in --loop (WS /ws/worker/{id}); job submits
+# push work_available so the worker ticks immediately instead of sleeping out --interval
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --interval 30  # still claims in ~1-2s
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --no-ws        # disable: HTTP heartbeat + plain polling
+# Heartbeats ride the socket while connected, HTTP POST when down (never both).
+# Operator pause/resume also pushes a pause/resume frame down the socket.
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx
