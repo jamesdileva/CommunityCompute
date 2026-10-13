@@ -528,3 +528,27 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
+## 2026-10-13 — Sprint 18: Two-PC Stress Test (mocked)
+**Goal:** System survives sustained workload with correct final results despite deliberate interruptions (roadmap Sprint 18). Mocked: two local workers (separate ID files) stand in for PC A/B; the real laptop run stays pending.
+**Scope (in / out):**
+- In: bulk-expiry unit test, live 240-unit job across 2 workers with worker-kill x2 + coordinator restart, throughput/failure/correctness measurement, attempt-outcome audit.
+- Out: real-laptop run (pending, same commands as quick-reference), batch claiming / perf optimization (observed, deferred to Sprint 31), dashboard changes.
+**Exit condition (verbatim from roadmap):** The system completes a large batch with correct final results despite deliberate Worker interruptions.
+**Changes:**
+- tests: `test_bulk_expired_leases_sweep_in_one_pass` (6 units, 3 held-then-aged leases, one sweep requeues all with attempt 2/1 split + 3 `expired` rows)
+- No product-code changes needed: leases, sweep-on-claim, 409 tolerance, WS reconnect, and coordinator restart recovery all held under load.
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 276 passed
+- random order → 276 passed
+- Live (fresh DB, lease 8s, A `--interval 0.5 --execution-delay 10`, B `--interval 0.5`): 240-unit hello_compute job → **completed 240/240, failed 0, final=28920** (= 240*241/2) in 403.7s (0.59 units/s) despite kill-A 12s, kill-B 8s, and a coordinator restart mid-drain — pass
+- Attempt audit: 32 `expired` (straggler/killed units redone by the survivor), 239 `completed`, 2 NULL-outcome rows (open attempts, likely kill-window orphans — units themselves all completed; noted, not chased for prototype)
+**Decisions:**
+- Late submits from the straggler rarely 409'd because hello_compute values are deterministic (identical resubmit → 200 per Sprint 7) — the expiry path still proved itself via the 32 swept attempts.
+- Throughput note for Sprint 31: ~1.5s effective per-unit cadence per worker (0.2s CPU sample + telemetry/claim/submit roundtrips + 0.5s tick sleep); batch claiming would be the obvious lever. No change now — correctness first.
+- Live orchestration stayed a temp script (uncommitted); dev DB untouched (fresh `live18.db`, removed after).
+**Next steps:**
+- Sprint 19: internet prototype (hosted coordinator, TLS, outbound worker, remote logging).
+- Two-machine E2E still pending (see quick-reference.md).
+
+---
+

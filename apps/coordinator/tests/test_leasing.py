@@ -131,3 +131,39 @@ def test_attempt_closed_on_completion(client: TestClient):
     assert attempts[0].outcome == "completed"
     assert attempts[0].ended_at is not None
     db.close()
+
+
+def test_bulk_expired_leases_sweep_in_one_pass(client: TestClient):
+    """Sprint 18: a crashed worker holding many units — one sweep requeues all."""
+    _submit(client, total=6, chunk=1)
+    _register(client, WORKER_A)
+    _register(client, WORKER_B)
+    held = [_claim(client, WORKER_A) for _ in range(3)]
+    assert all(u["work_unit_id"] for u in held)
+
+    # age every held lease past expiry (simulates crashed worker A)
+    db = next(iter(app.dependency_overrides[get_db]()))
+    past = datetime.now(timezone.utc) - timedelta(seconds=5)
+    for u in held:
+        db.get(WorkUnit, u["work_unit_id"]).lease_expires_at = past
+    db.commit()
+    db.close()
+
+    # B drains: swept units come back with attempt 2, fresh units with attempt 1
+    seen: dict[str, int] = {}
+    for _ in range(6):
+        c = _claim(client, WORKER_B)
+        assert c, "all 6 units must be claimable after the sweep"
+        seen[c["work_unit_id"]] = c["attempt_number"]
+        client.post(f"/work/{c['work_unit_id']}/result",
+                    json={"worker_id": WORKER_B, "status": "completed",
+                          "value": c["range_start"]})
+    assert _claim(client, WORKER_B) == {}
+    assert sum(1 for n in seen.values() if n == 2) == 3
+    assert sum(1 for n in seen.values() if n == 1) == 3
+
+    db = next(iter(app.dependency_overrides[get_db]()))
+    expired = db.query(WorkUnitAttempt).filter_by(outcome="expired").all()
+    assert len(expired) == 3
+    assert {x.worker_id for x in expired} == {WORKER_A}
+    db.close()
