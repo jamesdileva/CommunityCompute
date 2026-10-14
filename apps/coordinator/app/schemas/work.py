@@ -20,6 +20,9 @@ class WorkAssignment(BaseModel):
     lease_id: str | None = None
     lease_expires_at: datetime | None = None
     attempt_number: int = 1
+    # Sprint 21: HMAC seal over the unit identity + inputs. The worker
+    # verifies before executing and refuses on mismatch.
+    manifest_signature: str | None = None
 
 
 class WorkResult(BaseModel):

@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 19 — internet prototype (TLS https/wss, outbound-only worker, dev-cert tooling). See `docs/roadmap.md`, `docs/architecture.md`, `docs/implementation-guide.md`.
+**Status:** Sprint 21 - security boundary prototype (allowlist, sealed assignments, worker refusal). Sprints 17-20 done: WebSocket control, stress proof, TLS prototype, worker auth.
 
 ## Core loop (stable abstraction)
 

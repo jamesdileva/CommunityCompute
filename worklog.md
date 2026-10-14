@@ -599,7 +599,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - WS auth via `?token=` (sockets can't rely on Authorization headers); mismatch binds token→worker, never cross-identity.
 - Default `AUTH_ENABLED=false` keeps the entire anonymous LAN dev flow (all 289 prior tests) green untouched.
 **Next steps:**
-- Sprint 21: security boundary prototype (workload allowlist, resource limits, temp dirs, signed manifests).
+- Sprint 21: security boundary prototype (workload allowlist, resource limits, temp dirs, signed manifests) (done below).
+- Cross-network E2E still pending (needs hosted coordinator or VPN + real certs).
+
+---
+
+## 2026-10-14 — Sprint 21: Security Boundary Prototype
+**Goal:** Prepare for outside-origin workloads; worker refuses anything over-declared or tampered (roadmap Sprint 21).
+**Scope (in / out):**
+- In (Full Sprint 21): shared HMAC seal package, submit-time allowlist, sealed claims, worker verification + refusal, per-unit temp dirs, execution time-box, traversal guard, static no-network/no-subprocess scan, refusal tests.
+- Out: OS-level confinement/cgroups/syscall filtering (Sprint 22), asymmetric manifests (later), audit pipeline beyond access + security logs.
+**Exit condition (verbatim from roadmap):** A Worker refuses a workload that exceeds declared capabilities or violates policy.
+**Changes:**
+- Shared: packages/protocol/signing.py (canonical-JSON HMAC seal, DEV key, tamper-evident field set) + test_signing.py (8, in pytest testpaths now)
+- Coordinator: config WORKLOAD_SIGNING_KEY (+ startup warning on dev default), workloads KNOWN_WORKLOAD_TYPES + JobCreate validator (422 fail-fast), claim attaches manifest_signature, main.py 422-envelope sanitizer (default=str — a real crash bug the validator exposed)
+- Worker: worker/security/ (boundary docs, safe_join), registry.run_unit hardened (seal check → tempdir → timed execute; never raises), --work-root/--unit-time-limit CLI
+- tests: coordinator test_security.py (7: allowlist, seal validity, tamper, duplicates, startup warning), worker test_worker_security.py (11: refusal without execution, timeout, cleanup, safe_join, import scan, missing-root)
+**Tests run:**
+- full suite both orders → 346 passed
+- Live: unknown-type submit → 422 JSON envelope; signed job completes (final=10); flipped-range assignment refused locally; dev-key warning in coordinator log — pass
+**Decisions:**
+- Shared-secret HMAC now, public-key manifests later — stated as integrity-not-origin in code + worklog.
+- Caught live: missing work root crashed the worker loop (FileNotFoundError escaped run_unit's never-raises contract) → run_unit returns failed units for env failures + main.py creates the root. Regression test added.
+- Caught by tests: ThreadPoolExecutor.__exit__ joins hung threads (defeats timeouts) → daemon-thread + join(timeout) instead; abandoned threads documented, preemptive kill deferred to Sprint 22.
+- Caught before commit: test_basename collision (test_security.py × 2) — worker file renamed test_worker_security.py.
+**Next steps:**
+- Sprint 22: sandboxed execution (real isolation layer; DO NOT open public registration before it).
 - Cross-network E2E still pending (needs hosted coordinator or VPN + real certs).
 
 ---

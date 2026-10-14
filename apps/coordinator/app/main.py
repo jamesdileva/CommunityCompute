@@ -25,6 +25,7 @@ from app.api.api_auth import router as auth_router
 from app.api.deps import CaptureBodyMiddleware
 from app.config import get_settings
 from app.db import init_db
+from packages.protocol.signing import DEV_SIGNING_KEY
 
 settings = get_settings()
 logging.basicConfig(
@@ -38,6 +39,12 @@ log = logging.getLogger("coordinator")
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_db()
     log.info("coordinator up db=%s", settings.database_url)
+    if settings.workload_signing_key == DEV_SIGNING_KEY:
+        log.warning(
+            "WORKLOAD_SIGNING_KEY is the dev default: assignments are sealed "
+            "but any holder of the default key can forge them. Set a real "
+            "secret before any non-test use."
+        )
     yield
 
 
@@ -67,7 +74,13 @@ async def http_exception_handler(_request: Request, exc: StarletteHTTPException)
 async def validation_exception_handler(
     _request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    return JSONResponse(status_code=422, content=_envelope(422, exc.errors()))
+    # Sprint 21: exc.errors() can carry non-serializable context (e.g. the
+    # ValueError from a field_validator) — default=str keeps the envelope
+    # itself from crashing into a 500.
+    import json as _json
+
+    details = _json.loads(_json.dumps(exc.errors(), default=str))
+    return JSONResponse(status_code=422, content=_envelope(422, details))
 
 
 @app.exception_handler(Exception)

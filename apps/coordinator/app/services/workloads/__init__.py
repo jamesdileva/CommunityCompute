@@ -7,6 +7,15 @@ behind this registry so the verification path stays generic.
 
 from app.services.workloads import embeddings, hello_compute, stats_range
 
+# Sprint 21 allowlist: the only workload types this coordinator will run.
+# Both submit-time validation and verification dispatch consult this set —
+# anything else is rejected before it can reach a worker.
+KNOWN_WORKLOAD_TYPES = frozenset({"hello_compute", "stats_range", "embeddings"})
+
+
+def is_known_workload(workload_type: str) -> bool:
+    return workload_type in KNOWN_WORKLOAD_TYPES
+
 
 def expected(workload_type: str, op: str, range_start: int, range_end: int,
              params: dict | None = None):

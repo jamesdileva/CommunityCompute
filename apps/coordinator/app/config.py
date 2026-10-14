@@ -1,12 +1,14 @@
-"""Coordinator configuration (Sprint 1; S4 heartbeat timeout; S7 lease duration).
+"""Coordinator configuration (Sprint 1; S4 timeout; S7 lease; S20 auth; S21 signing).
 
 All values overridable via environment / `.env` (never commit `.env`).
 Env names: COORDINATOR_HOST, COORDINATOR_PORT, DATABASE_URL, LOG_LEVEL,
-HEARTBEAT_TIMEOUT_SECONDS, LEASE_DURATION_SECONDS.
+HEARTBEAT_TIMEOUT_SECONDS, LEASE_DURATION_SECONDS, AUTH_ENABLED,
+WORKLOAD_SIGNING_KEY.
 """
 
 from functools import lru_cache
 
+from packages.protocol.signing import DEV_SIGNING_KEY
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +25,10 @@ class Settings(BaseSettings):
     # flow (anonymous callers allowed) while the authenticated path rolls out;
     # set true to lock every worker-facing route (401 without a valid bearer).
     auth_enabled: bool = False
+    # Sprint 21: HMAC key sealing work assignments. The dev default matches the
+    # worker default so LAN prototypes work; ANY production use needs a real
+    # secret here (startup warns loudly when the default is in effect).
+    workload_signing_key: str = DEV_SIGNING_KEY
 
 
 @lru_cache

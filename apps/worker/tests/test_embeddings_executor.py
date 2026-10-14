@@ -7,6 +7,7 @@ from worker.execution.embeddings.embedder import (
 )
 from worker.execution.embeddings.executor import EmbeddingsExecutor
 from worker.execution.registry import executor_for, run_unit, supported_runtimes
+from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
 
 ASSIGN = {
     "protocol_version": "0.1.0-sprint6",
@@ -17,6 +18,11 @@ ASSIGN = {
     "range_end": 10,
     "params": {"dim": 64},
 }
+
+
+def signed(assignment: dict) -> dict:
+    """Attach a valid coordinator seal (Sprint 21: run_unit verifies it)."""
+    return {**assignment, "manifest_signature": sign_manifest(assignment, DEV_SIGNING_KEY)}
 
 
 def test_corpus_is_deterministic():
@@ -59,7 +65,7 @@ def test_default_embedder():
 
 
 def test_executor_batch_shape():
-    result = run_unit(ASSIGN)
+    result = run_unit(signed(ASSIGN))
     assert result.status == "completed"
     assert result.value["dim"] == 64
     assert len(result.value["vectors"]) == 10
@@ -69,7 +75,7 @@ def test_executor_batch_shape():
 
 
 def test_executor_rejects_bad_dim():
-    r = run_unit({**ASSIGN, "params": {"dim": -1}})
+    r = run_unit(signed({**ASSIGN, "params": {"dim": -1}}))
     assert r.status == "failed" and "invalid dim" in r.error
 
 
@@ -103,5 +109,5 @@ def test_dim_matches_coordinator_reference():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     expected = module.compute_batch(1, 3, dim=32)
-    got = run_unit({**ASSIGN, "range_start": 1, "range_end": 3, "params": {"dim": 32}})
+    got = run_unit(signed({**ASSIGN, "range_start": 1, "range_end": 3, "params": {"dim": 32}}))
     assert got.value == expected

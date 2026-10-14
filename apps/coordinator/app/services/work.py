@@ -130,6 +130,30 @@ def claim_next_unit(db: Session, worker_id: str,
         lease_id=lease_id,
         lease_expires_at=unit.lease_expires_at,
         attempt_number=attempt_number,
+        manifest_signature=_sign_assignment(
+            unit.id, unit.job_id,
+            job.workload_type if job else DEFAULT_WORKLOAD_TYPE,
+            unit.range_start, unit.range_end,
+            dict(job.params) if job and isinstance(job.params, dict) else {},
+        ),
+    )
+
+
+def _sign_assignment(work_unit_id: str, job_id: str, workload_type: str,
+                     range_start: int, range_end: int, params: dict) -> str:
+    """Seal the claim (Sprint 21). The worker verifies before executing."""
+    from packages.protocol.signing import sign_manifest
+
+    return sign_manifest(
+        {
+            "work_unit_id": work_unit_id,
+            "job_id": job_id,
+            "workload_type": workload_type,
+            "range_start": range_start,
+            "range_end": range_end,
+            "params": params,
+        },
+        get_settings().workload_signing_key,
     )
 
 

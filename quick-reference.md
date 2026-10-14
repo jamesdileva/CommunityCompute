@@ -123,6 +123,15 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --enro
 # GET /workers/{id}/credentials + GET /auth/credentials (auditing, no hashes).
 # Stored form is sha256-only: a DB leak yields no usable tokens.
 
+# Security boundary (Sprint 21): submit allowlist + sealed assignments + worker refusal
+# POST /jobs with unknown workload_type -> 422 (nothing persisted, audit-visible)
+# every claim carries manifest_signature (HMAC over unit id/type/range/params);
+# the worker verifies before executing and refuses tampered units outright.
+# WORKLOAD_SIGNING_KEY must match on both sides (dev default warns loudly at startup).
+# per-unit temp work dirs under --work-root (default <idfile-dir>/work), always cleaned;
+# execute() runs under --unit-time-limit (default 300s).
+# Full OS confinement is Sprint 22 — this sprint proves the refusal paths, not isolation.
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

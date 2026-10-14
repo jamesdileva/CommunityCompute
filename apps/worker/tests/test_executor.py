@@ -1,6 +1,7 @@
 """Sprint 13: adapter interface, lifecycle ordering, multi-workload registry."""
 
 import worker.main as main_mod
+from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
 from worker.execution.executor import ExecutorMetadata, UnitResult, WorkloadExecutor
 from worker.execution.hello_compute import HelloComputeExecutor, compute, output_hash
 from worker.execution.registry import (
@@ -20,6 +21,11 @@ GOOD = {
     "range_end": 100,
     "params": {"op": "sum"},
 }
+
+
+def signed(assignment: dict) -> dict:
+    """Attach a valid coordinator seal (Sprint 21: run_unit verifies it)."""
+    return {**assignment, "manifest_signature": sign_manifest(assignment, DEV_SIGNING_KEY)}
 
 
 # ---- interface contract ----------------------------------------------------
@@ -160,7 +166,7 @@ def test_cleanup_failure_does_not_break_result():
 
 
 def test_runner_times_execution():
-    r = run_unit(GOOD)
+    r = run_unit(signed(GOOD))
     assert r.status == "completed" and r.value == 5050
     assert r.execution_ms is not None and r.execution_ms >= 0
     assert r.output_hash == output_hash("sum", 5050)
@@ -170,8 +176,8 @@ def test_runner_times_execution():
 
 
 def test_two_workloads_same_path():
-    hello = run_unit(GOOD)
-    stats = run_unit({**GOOD, "workload_type": "stats_range"})
+    hello = run_unit(signed(GOOD))
+    stats = run_unit(signed({**GOOD, "workload_type": "stats_range"}))
     assert hello.status == "completed" and hello.value == 5050
     assert stats.status == "completed"
     assert stats.value == {"count": 100, "sum": 5050, "max": 100, "min": 1}
@@ -206,7 +212,7 @@ def test_unknown_workload_fails_closed():
 def test_stats_and_hello_hash_payloads_are_separate():
     import hashlib
 
-    hello_hash = run_unit({**GOOD, "params": {"op": "hash"}})
+    hello_hash = run_unit(signed({**GOOD, "params": {"op": "hash"}}))
     assert hello_hash.value == hashlib.sha256(b"1:100").hexdigest()
 
 
@@ -215,7 +221,7 @@ def test_work_cycle_uses_registry(monkeypatch):
     submitted: list[dict] = []
     monkeypatch.setattr(
         main_mod, "claim_work",
-        lambda *a, **k: {**GOOD, "workload_type": "stats_range"},
+        lambda *a, **k: signed({**GOOD, "workload_type": "stats_range"}),
     )
     monkeypatch.setattr(main_mod, "submit_result",
                         lambda url, unit_id, body, timeout=None, verify=True, **kw:

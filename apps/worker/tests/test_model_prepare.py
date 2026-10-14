@@ -9,6 +9,15 @@ from worker.models.manifest import manifest_for
 
 MANIFEST = manifest_for("embeddings")
 
+from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+
+
+def signed(assignment: dict) -> dict:
+    """Attach a valid coordinator seal (Sprint 21: run_unit verifies it)."""
+    return {**assignment, 'manifest_signature': sign_manifest(assignment, DEV_SIGNING_KEY)}
+
+
+
 
 def _fresh_dir(tmp_path) -> str:
     os.environ["MODEL_CACHE_DIR"] = str(tmp_path)
@@ -17,9 +26,9 @@ def _fresh_dir(tmp_path) -> str:
 
 def test_non_model_workload_unaffected(tmp_path):
     _fresh_dir(tmp_path)
-    result = run_unit({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
+    result = run_unit(signed({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
                        "job_id": "j1", "workload_type": "hello_compute",
-                       "range_start": 1, "range_end": 10, "params": {"op": "sum"}})
+                       "range_start": 1, "range_end": 10, "params": {"op": "sum"}}))
     assert result.status == "completed" and result.value == 55
     assert (result.metrics or {}).get("cache_hit") is None
 
@@ -44,8 +53,8 @@ def test_cache_hit_transition_in_metrics(tmp_path):
     assignment = {"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
                   "job_id": "j1", "workload_type": "embeddings",
                   "range_start": 1, "range_end": 2, "params": {"dim": 16}}
-    r1 = run_unit(assignment)
-    r2 = run_unit(assignment)
+    r1 = run_unit(signed(assignment))
+    r2 = run_unit(signed(assignment))
     assert r1.metrics["cache_hit"] is False
     assert r2.metrics["cache_hit"] is True
     assert r1.value == r2.value  # embedding output unchanged
@@ -60,9 +69,9 @@ def test_prepare_failure_becomes_failed_unit(tmp_path):
     original = executor_mod.manifest_for
     executor_mod.manifest_for = lambda _t: manifest
     try:
-        result = run_unit({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
+        result = run_unit(signed({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
                           "job_id": "j1", "workload_type": "embeddings",
-                          "range_start": 1, "range_end": 2, "params": {"dim": 16}})
+                          "range_start": 1, "range_end": 2, "params": {"dim": 16}}))
     finally:
         executor_mod.manifest_for = original
     assert result.status == "failed"
@@ -71,9 +80,9 @@ def test_prepare_failure_becomes_failed_unit(tmp_path):
 
 def test_dim_still_configurable_with_cache(tmp_path):
     _fresh_dir(tmp_path)
-    result = run_unit({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
+    result = run_unit(signed({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
                        "job_id": "j1", "workload_type": "embeddings",
-                       "range_start": 1, "range_end": 2, "params": {"dim": 8}})
+                       "range_start": 1, "range_end": 2, "params": {"dim": 8}}))
     assert result.status == "completed"
     assert result.value["dim"] == 8
     assert DEFAULT_DIM == 128
@@ -83,8 +92,8 @@ def test_dim_still_configurable_with_cache(tmp_path):
 
 def test_non_model_workload_unaffected(tmp_path):
     _fresh_dir(tmp_path)
-    result = run_unit({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
+    result = run_unit(signed({"protocol_version": "0.1.0-sprint6", "work_unit_id": "u1",
                        "job_id": "j1", "workload_type": "hello_compute",
-                       "range_start": 1, "range_end": 10, "params": {"op": "sum"}})
+                       "range_start": 1, "range_end": 10, "params": {"op": "sum"}}))
     assert result.status == "completed" and result.value == 55
     assert (result.metrics or {}).get("cache_hit") is None

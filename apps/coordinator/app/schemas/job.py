@@ -3,9 +3,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.job import CANCELLED, COMPLETED, FAILED, QUEUED, RUNNING
+from app.services.workloads import is_known_workload
 
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 WorkUnitStatus = Literal[
@@ -38,6 +39,15 @@ class JobCreate(BaseModel):
     total_units: int = Field(gt=0)
     chunk_size: int = Field(gt=0)
     verify_sample: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    @field_validator("workload_type")
+    @classmethod
+    def _allowlisted_type(cls, value: str) -> str:
+        # Sprint 21: unknown workload types fail fast at submit, before any
+        # worker could ever see them.
+        if not is_known_workload(value):
+            raise ValueError(f"unknown workload type {value!r} (not allowlisted)")
+        return value
     requirements: Requirements = Field(default_factory=Requirements)
 
 
