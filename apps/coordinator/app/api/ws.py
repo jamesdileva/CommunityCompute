@@ -14,6 +14,11 @@ Heartbeat discipline: one heartbeat per interval, never both channels at once.
 The worker sends heartbeats over the socket while connected and falls back to
 HTTP POST when the socket is down. Unknown worker IDs are refused with a
 4404 close (the WS equivalent of the HTTP 404).
+
+Authentication (Sprint 20): when `AUTH_ENABLED=true`, the worker passes
+`?token=<bearer>` (sockets can't rely on Authorization headers everywhere).
+Missing/invalid/revoked tokens — or a token for a *different* worker — close
+the socket with 4401 before any frame is processed.
 """
 
 import asyncio
@@ -24,9 +29,11 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 
 from app.api.heartbeats import apply_heartbeat
+from app.config import get_settings
 from app.db import get_db
 from app.models.worker import Worker
 from app.schemas.heartbeat import Heartbeat
+from app.services.auth import verify_credential
 from app.services.ws_registry import registry
 
 log = logging.getLogger("coordinator")
@@ -42,6 +49,9 @@ async def worker_socket(
     worker = db.get(Worker, worker_id)
     if worker is None:
         await websocket.close(code=4404)
+        return
+    if not _socket_authorized(websocket, worker_id, db):
+        await websocket.close(code=4401)
         return
     loop = asyncio.get_running_loop()
     registry.register(worker_id, websocket, loop)
@@ -91,3 +101,17 @@ async def worker_socket(
     finally:
         registry.unregister(worker_id, websocket)
         log.info("ws disconnected id=%s", worker_id)
+
+
+def _socket_authorized(websocket: WebSocket, worker_id: str, db: Session) -> bool:
+    """Bearer check for the socket handshake (`?token=` query param)."""
+    if not get_settings().auth_enabled:
+        return True
+    token = websocket.query_params.get("token")
+    if not token:
+        return False
+    credential = verify_credential(db, token, worker_id)
+    if credential is None:
+        log.info("ws auth refused id=%s", worker_id)
+        return False
+    return True

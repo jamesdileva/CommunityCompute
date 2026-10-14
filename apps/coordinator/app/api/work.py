@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import authenticate
 from app.db import get_db
 from app.models.result import Result
 from app.schemas.work import ClaimRequest, ResultOut, WorkResult
@@ -18,7 +19,8 @@ router = APIRouter()
 
 @router.post("/work/{worker_id}/claim")
 def claim_work(worker_id: str, body: ClaimRequest | None = None,
-               db: Session = Depends(get_db)) -> dict:
+               db: Session = Depends(get_db),
+               _authed: str | None = Depends(authenticate)) -> dict:
     """Expire stale leases, then claim the best queued unit ({} when idle).
 
     Units whose declared model is already cached on this worker are
@@ -34,7 +36,8 @@ def claim_work(worker_id: str, body: ClaimRequest | None = None,
 
 @router.post("/work/{work_unit_id}/result", response_model=ResultOut)
 def submit_result(
-    work_unit_id: str, payload: WorkResult, db: Session = Depends(get_db)
+    work_unit_id: str, payload: WorkResult, db: Session = Depends(get_db),
+    _authed: str | None = Depends(authenticate),
 ) -> Result:
     """Verified result upload.
 

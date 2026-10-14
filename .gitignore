@@ -22,6 +22,8 @@ build/
 .worker_id*
 # Contributor policy — per-machine, never commit
 policy.json
+# Bearer credential — per-machine secret, never commit
+credential.json
 # Model cache — per-machine runtime data, never commit (repo-root dir only)
 /models/
 .worker-id

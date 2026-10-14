@@ -15,7 +15,7 @@ def test_payload_shape_and_values():
 
 
 def test_send_heartbeat_ok(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         assert "/heartbeat" in url
         request = httpx.Request("POST", url)
         return httpx.Response(200, json={"status": "online", "server_time": "now"},
@@ -28,7 +28,7 @@ def test_send_heartbeat_ok(monkeypatch):
 
 
 def test_send_heartbeat_failure_raises(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx, "post", fake_post)

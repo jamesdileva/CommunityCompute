@@ -21,6 +21,8 @@ from app.api.resources import router as resources_router
 from app.api.workers import router as workers_router
 from app.api.work import router as work_router
 from app.api.ws import router as ws_router
+from app.api.api_auth import router as auth_router
+from app.api.deps import CaptureBodyMiddleware
 from app.config import get_settings
 from app.db import init_db
 
@@ -40,6 +42,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="CommunityCompute Coordinator", version=VERSION, lifespan=lifespan)
+app.add_middleware(CaptureBodyMiddleware)  # Sprint 20: body worker_id for auth binding
 app.include_router(health_router)
 app.include_router(workers_router)
 app.include_router(heartbeats_router)
@@ -48,6 +51,7 @@ app.include_router(work_router)
 app.include_router(resources_router)
 app.include_router(network_router)
 app.include_router(ws_router)
+app.include_router(auth_router)
 
 
 def _envelope(code: int, message: object) -> dict:

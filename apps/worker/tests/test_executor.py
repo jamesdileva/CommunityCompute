@@ -218,7 +218,7 @@ def test_work_cycle_uses_registry(monkeypatch):
         lambda *a, **k: {**GOOD, "workload_type": "stats_range"},
     )
     monkeypatch.setattr(main_mod, "submit_result",
-                        lambda url, unit_id, body, timeout=None, verify=True:
+                        lambda url, unit_id, body, timeout=None, verify=True, **kw:
                         submitted.append(body)
                         or {"ok": True})
     main_mod._attempt_work_cycle("http://x", "w1", 5.0, availability=(True, "ok"))

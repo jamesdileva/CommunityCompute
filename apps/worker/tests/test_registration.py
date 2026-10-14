@@ -22,7 +22,7 @@ def test_build_payload_defaults():
 
 
 def test_register_worker_ok(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         assert url.endswith("/workers/register")
         assert json["worker_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         request = httpx.Request("POST", url)
@@ -36,7 +36,7 @@ def test_register_worker_ok(monkeypatch):
 
 
 def test_register_worker_failure_raises(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx, "post", fake_post)

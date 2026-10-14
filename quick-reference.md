@@ -111,6 +111,18 @@ python apps/worker/worker/main.py --coordinator-url https://127.0.0.1:8443 --ca-
 # proper CA or a private network/VPN (see implementation-guide); worker auth lands in Sprint 20.
 # Remote logging = coordinator logs (uvicorn access + worker heartbeats/results, incl. WS peer IP).
 
+# Worker authentication (Sprint 20): AUTH_ENABLED=true on the coordinator locks
+# every worker-facing route (register/heartbeat/capabilities/claim/result/resources/WS)
+# behind bearer credentials. Default false = anonymous LAN dev flow (unchanged).
+# 1. operator mints a single-use enrollment token:
+#    POST /auth/enrollment-tokens {"note": "laptop"} -> {"token": "...", ...} (shown once)
+# 2. worker exchanges it for its long-lived credential (saved to credential.json):
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --enroll <enrollment-token>
+# 3. from then on the worker sends Authorization: Bearer on HTTP + ?token= on the socket
+# Operator: POST /workers/{id}/revoke (immediate lockout), POST .../rotate-credential,
+# GET /workers/{id}/credentials + GET /auth/credentials (auditing, no hashes).
+# Stored form is sha256-only: a DB leak yields no usable tokens.
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

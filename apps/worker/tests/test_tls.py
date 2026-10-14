@@ -38,7 +38,7 @@ def test_parse_args_tls_flags():
 def _capture(monkeypatch):
     seen: dict = {}
 
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         seen.update(url=url, json=json, timeout=timeout, verify=verify)
         request = httpx.Request("POST", url)
         return httpx.Response(200, json={"ok": True}, request=request)

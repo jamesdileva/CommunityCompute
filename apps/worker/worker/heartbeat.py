@@ -5,6 +5,8 @@ import subprocess
 
 import httpx
 
+from worker.credentials import Credential, auth_headers
+
 try:
     import psutil
 except ImportError:  # pragma: no cover - hard dependency
@@ -25,12 +27,13 @@ def build_heartbeat_payload(worker_id: str) -> dict:
 
 def send_heartbeat(
     coordinator_url: str, payload: dict, timeout: float = 5.0,
-    verify: bool | str = True,
+    verify: bool | str = True, credential: Credential | None = None,
 ) -> dict:
     """POST /workers/{id}/heartbeat. Raises on failure (caller logs/retries)."""
     wid = payload["worker_id"]
     url = f"{coordinator_url.rstrip('/')}/workers/{wid}/heartbeat"
-    resp = httpx.post(url, json=payload, timeout=timeout, verify=verify)
+    resp = httpx.post(url, json=payload, timeout=timeout, verify=verify,
+                      headers=auth_headers(credential))
     resp.raise_for_status()
     return resp.json()
 

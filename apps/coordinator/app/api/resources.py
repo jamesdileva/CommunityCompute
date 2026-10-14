@@ -9,13 +9,15 @@ from app.db import get_db
 from app.models.sample import ResourceSample
 from app.models.worker import Worker
 from app.schemas.sample import ResourceReport, SampleOut
+from app.api.deps import authenticate
 
 router = APIRouter()
 
 
 @router.post("/workers/{worker_id}/resources", response_model=SampleOut)
 def report_resources(
-    worker_id: str, payload: ResourceReport, db: Session = Depends(get_db)
+    worker_id: str, payload: ResourceReport, db: Session = Depends(get_db),
+    _worker_id: str | None = Depends(authenticate),
 ) -> SampleOut:
     """Append one telemetry sample. Unknown worker -> 404."""
     worker = db.get(Worker, worker_id)

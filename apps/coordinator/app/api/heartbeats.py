@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import authenticate
 from app.db import get_db
 from app.models.heartbeat import WorkerHeartbeat
 from app.models.worker import Worker
@@ -61,7 +62,8 @@ def apply_heartbeat(worker_id: str, payload: Heartbeat, db: Session) -> Heartbea
 
 @router.post("/workers/{worker_id}/heartbeat", response_model=HeartbeatResponse)
 def receive_heartbeat(
-    worker_id: str, payload: Heartbeat, db: Session = Depends(get_db)
+    worker_id: str, payload: Heartbeat, db: Session = Depends(get_db),
+    _authed: str | None = Depends(authenticate),
 ) -> HeartbeatResponse:
     return apply_heartbeat(worker_id, payload, db)
 

@@ -2,6 +2,8 @@
 
 import httpx
 
+from worker.credentials import Credential, auth_headers
+
 
 def claim_work(
     coordinator_url: str,
@@ -9,6 +11,7 @@ def claim_work(
     cached_models: list[str] | None = None,
     timeout: float = 5.0,
     verify: bool | str = True,
+    credential: Credential | None = None,
 ) -> dict | None:
     """POST /work/{worker_id}/claim — sweeps expired leases, then FIFO claims.
 
@@ -18,14 +21,15 @@ def claim_work(
     """
     url = f"{coordinator_url.rstrip('/')}/work/{worker_id}/claim"
     resp = httpx.post(url, json={"cached_models": cached_models or []},
-                      timeout=timeout, verify=verify)
+                      timeout=timeout, verify=verify,
+                      headers=auth_headers(credential))
     resp.raise_for_status()
     return resp.json() or None
 
 
 def submit_result(
     coordinator_url: str, work_unit_id: str, result_payload: dict, timeout: float = 5.0,
-    verify: bool | str = True,
+    verify: bool | str = True, credential: Credential | None = None,
 ) -> dict:
     """POST /work/{work_unit_id}/result.
 
@@ -33,7 +37,8 @@ def submit_result(
     or a late result after lease expiry) — caller treats that as handled.
     """
     url = f"{coordinator_url.rstrip('/')}/work/{work_unit_id}/result"
-    resp = httpx.post(url, json=result_payload, timeout=timeout, verify=verify)
+    resp = httpx.post(url, json=result_payload, timeout=timeout, verify=verify,
+                      headers=auth_headers(credential))
     if resp.status_code == 409:
         return {"status": "already_completed"}
     resp.raise_for_status()

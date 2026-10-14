@@ -8,7 +8,7 @@ from worker.work import claim_work, submit_result
 
 
 def test_claim_work_returns_none_when_empty(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         assert url.endswith("/claim")
         assert json == {"cached_models": []}
         request = httpx.Request("POST", url)
@@ -24,7 +24,7 @@ def test_claim_work_returns_assignment(monkeypatch):
                   "range_start": 1, "range_end": 10, "params": {"op": "sum"},
                   "lease_id": "l1", "attempt_number": 1}
 
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         request = httpx.Request("POST", url)
         return httpx.Response(200, json=assignment, request=request)
 
@@ -34,7 +34,7 @@ def test_claim_work_returns_assignment(monkeypatch):
 
 
 def test_submit_result_ok(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         request = httpx.Request("POST", url)
         return httpx.Response(200, json={"ok": True, "work_unit_id": "u1"}, request=request)
 
@@ -44,7 +44,7 @@ def test_submit_result_ok(monkeypatch):
 
 
 def test_submit_result_rejection_raises(monkeypatch):
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         request = httpx.Request("POST", url)
         return httpx.Response(422, json={"error": "verification failed"}, request=request)
 
@@ -56,7 +56,7 @@ def test_submit_result_rejection_raises(monkeypatch):
 def test_submit_result_409_is_handled(monkeypatch):
     """Sprint 7: a late result for an already-completed unit returns, never raises."""
 
-    def fake_post(url, json=None, timeout=None, verify=True):
+    def fake_post(url, json=None, timeout=None, verify=True, **kw):
         request = httpx.Request("POST", url)
         return httpx.Response(409, json={"error": "already completed by another worker"},
                               request=request)
@@ -78,7 +78,7 @@ def test_work_cycle_executes_and_submits(monkeypatch):
                          "range_start": 1, "range_end": 10, "params": {"op": "sum"}},
     )
 
-    def fake_submit(url, unit_id, body, timeout=None, verify=True):
+    def fake_submit(url, unit_id, body, timeout=None, verify=True, **kw):
         submitted.append(body)
         return {"ok": True}
 

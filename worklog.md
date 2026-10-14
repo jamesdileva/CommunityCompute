@@ -578,3 +578,29 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
+## 2026-10-14 — Sprint 20: Worker Authentication
+**Goal:** Trusted worker identity — enrollment, bearer credentials, rotation, revocation; unregistered workers get no work, revoked workers lose access (roadmap Sprint 20).
+**Scope (in / out):**
+- In (Full Sprint 20): hash-only credential tables, enrollment mint/redeem (single-use + TTL), bearer dependency on all worker-write routes + WS `?token=`, worker credential.json + `--enroll` CLI + headers everywhere, rotation/revocation, 17+7 tests.
+- Out: operator auth for mint/revoke endpoints (single-node prototype: local operator), credential expiry schedules, mTLS.
+**Exit condition (verbatim from roadmap):** An unregistered Worker cannot receive Work Units. A revoked Worker loses access.
+**Changes:**
+- Coordinator: models/auth.py (enrollment_tokens, worker_credentials — hashes only), services/auth.py (mint/redeem/verify/rotate/revoke/list), schemas/auth.py, api/api_auth.py (mint/list/enroll/rotate/revoke/credential views), api/deps.py (Bearer dependency + body-capture middleware), main.py mounts router + middleware, config AUTH_ENABLED=false default, authenticate wired on register/heartbeat/capabilities/claim/result/resources, WS `?token=` check (4401 close codes: missing/bad/other-worker/revoked), version → 0.1.0-sprint20
+- Worker: worker/credentials.py (credential.json beside ID, tolerant load, enroll client), Bearer headers on every client, WS URL token param, `--enroll` CLI (saves + exits), enrolled worker_id wins over local UUID, 401 fail-fast hints ("re-enroll") instead of silent retries
+- tests: coordinator test_auth.py (17: mint/redeem/replay/TTL/hashed-storage/enabled-blocks/valid-passes/cross-worker/revoke/rotate/6×WS), worker test_credentials.py (9) + test_auth_wiring.py (7); 25 existing httpx fakes gained `**kw` tolerance
+- docs: quick-reference auth section, .env.example AUTH_ENABLED, .gitignore credential.json, README status
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests -p no:randomly` → 322 passed
+- random order → 322 passed
+- Live (AUTH_ENABLED=true): anonymous claim → **401**; `--enroll` → credential saved; enrolled worker completes 4-unit job (final=10); revoke → claim **401** — pass
+**Decisions:**
+- Prior in-progress auth draft (models/service/schemas/endpoints/deps/tests) was reviewed and kept — it was well-designed (hash-only, single-use, per-call revocation). The missing piece was integration: router never mounted (the 11-test failure), no route wiring, no WS check, no worker side.
+- Fixed a real tz bug in the draft: `_aware()` stripped tzinfo instead of adding UTC → naive/aware comparison crash on TTL-aged tokens.
+- WS auth via `?token=` (sockets can't rely on Authorization headers); mismatch binds token→worker, never cross-identity.
+- Default `AUTH_ENABLED=false` keeps the entire anonymous LAN dev flow (all 289 prior tests) green untouched.
+**Next steps:**
+- Sprint 21: security boundary prototype (workload allowlist, resource limits, temp dirs, signed manifests).
+- Cross-network E2E still pending (needs hosted coordinator or VPN + real certs).
+
+---
+

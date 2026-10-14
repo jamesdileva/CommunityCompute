@@ -15,6 +15,7 @@ from app.schemas.worker import WorkerOut, WorkerRegistration
 from app.services.availability import effective_status
 from app.services.tiers import hardware_tiers
 from app.services.ws_registry import registry
+from app.api.deps import authenticate
 
 log = logging.getLogger("coordinator")
 
@@ -22,7 +23,10 @@ router = APIRouter(prefix="/workers", tags=["workers"])
 
 
 @router.post("/register", response_model=WorkerOut)
-def register_worker(payload: WorkerRegistration, db: Session = Depends(get_db)) -> Worker:
+def register_worker(
+    payload: WorkerRegistration, db: Session = Depends(get_db),
+    _authed: str | None = Depends(authenticate),
+) -> Worker:
     """Idempotent upsert: re-registering the same ID refreshes version/host/seen timestamps."""
     wid = str(payload.worker_id)
     now = datetime.now(timezone.utc)
@@ -108,7 +112,8 @@ def _to_out(worker: Worker, status: str, capabilities: dict | None) -> WorkerOut
 
 @router.post("/{worker_id}/capabilities", response_model=CapabilityProfile)
 def report_capabilities(
-    worker_id: str, payload: CapabilityProfile, db: Session = Depends(get_db)
+    worker_id: str, payload: CapabilityProfile, db: Session = Depends(get_db),
+    _authed: str | None = Depends(authenticate),
 ) -> CapabilityProfile:
     """Upsert a worker's capability profile. Unknown worker → 404; bad shape → 422."""
     worker = db.get(Worker, worker_id)

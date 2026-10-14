@@ -38,7 +38,7 @@ def test_heartbeat_carries_structured_availability(monkeypatch):
     sent: list = []
     monkeypatch.setattr(
         main_mod, "send_heartbeat",
-        lambda url, payload, timeout=None, verify=True: sent.append(payload)
+        lambda url, payload, timeout=None, verify=True, **kw: sent.append(payload)
         or {"status": "online"},
     )
     main_mod._attempt_heartbeat("http://x", "w1", 5.0, availability={

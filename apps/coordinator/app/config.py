@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     log_level: str = "info"
     heartbeat_timeout_seconds: int = 60
     lease_duration_seconds: int = 60
+    # Sprint 20: worker authentication. False keeps the pre-Sprint-20 LAN dev
+    # flow (anonymous callers allowed) while the authenticated path rolls out;
+    # set true to lock every worker-facing route (401 without a valid bearer).
+    auth_enabled: bool = False
 
 
 @lru_cache

@@ -48,8 +48,13 @@ def build_ssl_context(
     return None
 
 
-def build_ws_url(coordinator_url: str, worker_id: str) -> str:
-    """http(s):// → ws(s):// + /ws/worker/{id}. Pass-through if already ws(s)."""
+def build_ws_url(coordinator_url: str, worker_id: str, token: str | None = None) -> str:
+    """http(s):// → ws(s):// + /ws/worker/{id} (+ ?token= for AUTH_ENABLED).
+
+    WebSocket clients can't reliably send Authorization headers, so the
+    bearer token rides the query string (Sprint 20). No token → no param
+    (anonymous flow when auth is disabled).
+    """
     base = coordinator_url.rstrip("/")
     if base.startswith("https://"):
         base = "wss://" + base[len("https://"):]
@@ -57,7 +62,10 @@ def build_ws_url(coordinator_url: str, worker_id: str) -> str:
         base = "ws://" + base[len("http://"):]
     elif not base.startswith(("ws://", "wss://")):
         base = "ws://" + base
-    return f"{base}/ws/worker/{worker_id}"
+    url = f"{base}/ws/worker/{worker_id}"
+    if token:
+        url += f"?token={token}"
+    return url
 
 
 def build_hello_message(worker_id: str) -> dict:
@@ -128,6 +136,7 @@ def ws_loop(
     policy_file: Path | None = None,
     ca_bundle: str | Path | None = None,
     insecure: bool = False,
+    token: str | None = None,
 ) -> None:
     """Background thread: hold the control socket, dispatch frames, heartbeat.
 
@@ -135,11 +144,13 @@ def ws_loop(
     loop, `pause`/`resume` log locally. Heartbeats go over the socket on
     `heartbeat_interval` while connected. Any failure → clear `ws_connected`
     (main loop falls back to HTTP) → capped-backoff reconnect.
+
+    `token` (Sprint 20) places the bearer credential in the handshake URL.
     """
     from websockets.sync.client import connect
 
     backoff = BACKOFF_START
-    ws_url = build_ws_url(coordinator_url, worker_id)
+    ws_url = build_ws_url(coordinator_url, worker_id, token)
     ssl_context = (
         build_ssl_context(ca_bundle, insecure) if ws_url.startswith("wss://") else None
     )
