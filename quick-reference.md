@@ -167,6 +167,14 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # every accepted/rejected result, expired lease, and duplicate agree/disagree
 # is recorded; lying workers sink toward 0 while honest ones rise.
 
+# Accounting (Sprint 27): auditable per-unit contribution ledger
+# GET /accounting/entries[?job_id=&worker_id=&limit=] -> [{unit, job, worker,
+#   workload, execution/cpu/gpu ms, verified, verified_by, voided_at}]
+# GET /workers/{id}/accounting -> {units_completed/valid/voided, totals ms,
+#   verified_units, availability_24h, reliability score}
+# v1 estimates: cpu = wall time (single-threaded compute); gpu = wall time
+# iff the job required a GPU, else 0. Overturns void records (history kept).
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

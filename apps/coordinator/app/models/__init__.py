@@ -1,5 +1,6 @@
 """SQLAlchemy models (S1 Worker; S3 caps; S4 heartbeats; S5 Job/WorkUnit; S6 Result; S7 Attempt; S12 Sample; S23 Reputation)."""
 
+from app.models.accounting import ContributionRecord
 from app.models.attempt import WorkUnitAttempt
 from app.models.auth import EnrollmentToken, WorkerCredential
 from app.models.capability import WorkerCapability
@@ -12,6 +13,7 @@ from app.models.work_unit import WorkUnit
 from app.models.worker import Worker
 
 __all__ = [
+    "ContributionRecord",
     "EnrollmentToken",
     "Job",
     "ReputationEvent",

@@ -30,7 +30,7 @@ from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
-from app.services import reputation
+from app.services import accounting, reputation
 from app.services.compat import check
 from app.services.workloads import expected as workload_expected
 from app.services.workloads import output_hash as workload_output_hash
@@ -308,6 +308,12 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
         log.info("unit %s completed by %s (%sms)", work_unit_id, payload.worker_id, execution_ms)
         reputation.record(db, payload.worker_id, reputation.RESULT_ACCEPTED,
                           work_unit_id=work_unit_id)
+        accounting.record_completion(
+            db, work_unit_id=work_unit_id, job_id=unit.job_id,
+            worker_id=payload.worker_id,
+            workload_type=workload_type, execution_ms=execution_ms,
+            requires_gpu=bool((job.requirements or {}).get("gpu")) if job else False,
+        )
         if unit.verify_of is None:
             _maybe_spawn_duplicate(db, job, unit)
         else:
@@ -433,6 +439,7 @@ def _overturn_original(db: Session, duplicate: WorkUnit, disagreer: str,
         original_result.error = message
     original.status = "failed"
     db.commit()
+    accounting.void_record(db, duplicate.verify_of or "")
     reputation.record(db, disagreer, reputation.VERIFICATION_DISAGREED,
                       work_unit_id=duplicate.id, detail=message)
     log.info("unit %s DISAGREEMENT -> original and duplicate both failed", original.id)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.models.accounting import ContributionRecord
 from app.models.attempt import WorkUnitAttempt
 from app.models.capability import WorkerCapability
 from app.models.job import Job
@@ -156,3 +157,35 @@ def worker_contribution_stats(worker_id: str, db: Session = Depends(get_db)) -> 
         "total_execution_ms": round(float(total_ms), 3),
         "attempts": attempts,
     }
+
+
+@router.get("/accounting/entries")
+def accounting_entries(
+    job_id: str | None = None,
+    worker_id: str | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Auditable contribution ledger (Sprint 27): newest first, filterable."""
+    query = db.query(ContributionRecord).order_by(ContributionRecord.id.desc())
+    if job_id:
+        query = query.filter_by(job_id=job_id)
+    if worker_id:
+        query = query.filter_by(worker_id=worker_id)
+    rows = query.limit(min(max(limit, 1), 1000)).all()
+    return [
+        {
+            "work_unit_id": r.work_unit_id,
+            "job_id": r.job_id,
+            "worker_id": r.worker_id,
+            "workload_type": r.workload_type,
+            "execution_ms": r.execution_ms,
+            "cpu_time_ms": r.cpu_time_ms,
+            "gpu_time_ms": r.gpu_time_ms,
+            "verified": r.verified,
+            "verified_by": r.verified_by,
+            "voided_at": r.voided_at.isoformat() if r.voided_at else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]

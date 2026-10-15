@@ -750,8 +750,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Diagnostics prints credential *presence*, never the value — support bundles must be forwardable without redaction steps.
 - Capacity endpoint counts online workers only for resources (offline capacity isn't capacity).
 **Next steps:**
-- Sprint 27: compute accounting (per-unit auditable contribution records).
+- Sprint 27: compute accounting (per-unit auditable contribution records) (done below).
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-15 — Sprint 27: Compute Accounting
+**Goal:** Measure contribution accurately — every completed unit leaves auditable data (roadmap Sprint 27).
+**Scope (in / out):**
+- In (Full Sprint 27): contribution_records table, v1 time estimation, availability fraction, per-worker summary, ledger + summary endpoints, overturn voiding.
+- Out: credits/payouts (S28+ consume this ledger), kWh estimates, customer billing views.
+**Exit condition (verbatim from roadmap):** Every completed Work Unit produces auditable contribution data.
+**Changes:**
+- Coordinator: models/accounting.py (append-only rows; voided_at is the one allowed mutation), services/accounting.py (estimate_times, record_completion idempotent, void_record, availability_fraction from heartbeat gaps, worker_summary), work.py hooks (record on accept, void on overturn), api/network.py GET /accounting/entries (job/worker/limit filters), api/workers.py GET /workers/{id}/accounting
+- tests: test_accounting.py (12: estimates, record shape, gpu split, no-record-on-fail, no-double-count, overturn void, filters, summary reconcile, availability none/dense/gap)
+- quick-reference.md (ledger section), README status
+**Tests run:**
+- full suite both orders → 422 passed
+- Live: CPU job (2 units, gpu=0.0) + GPU-required job (2 units, gpu>0) → 4 ledger rows, all verified; DB confirms 4 units / 0.112ms / gpu 0.033; summary reconciles — pass
+**Decisions:**
+- v1 estimation stated plainly in code: cpu = wall (single-threaded saturating), gpu = wall iff job required GPU else 0. Refine when per-unit device telemetry exists.
+- Availability = heartbeat coverage fraction (gap > 2x timeout = offline); no heartbeats = None (unknown, not zero).
+- Overturn voids rather than deletes (audit trail); idempotent resubmits never double-count.
+**Next steps:**
+- Sprint 28: compute credits (earn/spend non-cash ledger on top of accounting).
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
 
 
 

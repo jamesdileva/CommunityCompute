@@ -146,3 +146,18 @@ def worker_reputation(worker_id: str, db: Session = Depends(get_db)) -> dict:
         return reputation.reliability(db, worker_id)
     except KeyError:
         raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+
+
+@router.get("/{worker_id}/accounting")
+def worker_accounting(worker_id: str, db: Session = Depends(get_db)) -> dict:
+    """Per-worker accounting rollup (Sprint 27): contribution + availability.
+
+    Same read-only posture as the other GETs; the numbers here are what
+    Sprint 28+ economics will settle against.
+    """
+    from app.services import accounting
+
+    try:
+        return accounting.worker_summary(db, worker_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker"})
