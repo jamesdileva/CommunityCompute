@@ -131,6 +131,18 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --enro
 # per-unit temp work dirs under --work-root (default <idfile-dir>/work), always cleaned;
 # execute() runs under --unit-time-limit (default 300s).
 
+# Worker packaging (Sprint 24): install without a dev environment
+# 1. new machine: python apps/worker/worker/main.py --setup   (or the bundle's worker.exe --setup)
+python apps/worker/worker/main.py --setup
+# 2. build the bundle (needs: pip install pyinstaller pyside6): scripts/build_worker.ps1
+#    -> dist/worker/worker.exe (one-dir console build; ~190MB with Qt)
+# 3. run it: worker.exe --loop  |  tray mode: worker.exe --loop --tray
+# 4. autostart: worker.exe --install-autostart / --remove-autostart (HKCU Run, no elevation)
+# 5. update check only: worker.exe --check-update  (exit 2 = newer coordinator)
+# 6. logs: worker.exe --loop --log-file worker.log  (rotating 1MB x3)
+# 7. uninstall: scripts/uninstall_worker.ps1  (stops worker, removes autostart, optional data wipe)
+# Privacy: docs/privacy.md (what's sent, what's never touched, how to leave)
+
 # Sandboxed execution (Sprint 22, Windows, opt-in): Job Object limits + low-integrity child
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --sandbox
 # --sandbox runs each unit in a child process: memory/process caps + kill-on-close

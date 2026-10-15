@@ -131,6 +131,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     pause = p.add_mutually_exclusive_group()
     pause.add_argument("--pause", action="store_true", help="Persist paused=true and exit")
     pause.add_argument("--resume", action="store_true", help="Persist paused=false and exit")
+    p.add_argument("--setup", action="store_true",
+                   help="First-run wizard: coordinator, enrollment, policy, autostart (Sprint 24)")
+    p.add_argument("--tray", action="store_true",
+                   help="Run the loop under a system-tray icon (Sprint 24, needs PySide6)")
+    p.add_argument("--install-autostart", action="store_true",
+                   help="Register login auto-start for this worker (Sprint 24)")
+    p.add_argument("--remove-autostart", action="store_true",
+                   help="Remove the login auto-start entry (Sprint 24)")
+    p.add_argument("--log-file", default=None,
+                   help="Also log to this file (rotating, 1MB x3; default: off)")
+    p.add_argument("--check-update", action="store_true",
+                   help="Compare bundled version with the coordinator and exit (Sprint 24)")
     return p.parse_args(argv)
 
 
@@ -184,6 +196,65 @@ def _attempt_heartbeat(coordinator_url: str, worker_id: str, timeout: float,
         _ = body
     except Exception as exc:  # noqa: BLE001 — heartbeat failure must not stop the worker
         print(f"[worker {worker_id}] heartbeat FAILED: {exc}", flush=True)
+
+
+def _check_update(coordinator_url: str, timeout: float,
+                  verify: bool | str = True) -> int:
+    """Compare the bundled worker version with the coordinator's (Sprint 24).
+
+    Check-only: the prototype never downloads or installs anything itself.
+    Returns 0 when current, 2 when an update exists, 1 on failure.
+    """
+    from worker import __version__ as bundled
+
+    try:
+        remote = httpx.get(f"{coordinator_url.rstrip('/')}/health",
+                           timeout=timeout, verify=verify).json().get("version", "")
+    except Exception as exc:  # noqa: BLE001 - coordinator unreachable
+        print(f"[worker] update check FAILED: {exc}", flush=True)
+        return 1
+    print(f"[worker] bundled={bundled} coordinator={remote}", flush=True)
+    if remote and remote != bundled:
+        print("[worker] an update exists: fetch a fresh worker build from "
+              "the project releases page and re-run --setup", flush=True)
+        return 2
+    print("[worker] up to date", flush=True)
+    return 0
+
+
+def _enable_file_log(path: str) -> None:
+    """Tee stdout/stderr to a rotating log file (Sprint 24: 1MB x3 backups)."""
+    import logging.handlers
+
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        path, maxBytes=1024 * 1024, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+
+    class _Tee:
+        def __init__(self, stream) -> None:
+            self._stream = stream
+            self._handler = handler
+            self._logger = logging.getLogger("worker.filelog")
+            self._logger.addHandler(handler)
+            self._logger.setLevel(logging.INFO)
+            self._logger.propagate = False
+
+        def write(self, text: str) -> int:
+            if text.strip():
+                self._logger.info(text.rstrip())
+            return self._stream.write(text)
+
+        def flush(self) -> None:
+            self._stream.flush()
+            handler.flush()
+
+        def __getattr__(self, name: str):
+            return getattr(self._stream, name)
+
+    sys.stdout = _Tee(sys.stdout)
+    sys.stderr = _Tee(sys.stderr)
 
 
 def _policy_file(args: argparse.Namespace) -> Path:
@@ -361,6 +432,28 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
         f"(id file: {get_worker_id_file(args.worker_id_file)})",
         flush=True,
     )
+    if args.setup:
+        from worker.setup_wizard import main as setup_main
+
+        return setup_main([])
+    if args.install_autostart:
+        from worker.autostart import install as install_autostart
+
+        where = install_autostart()
+        print(f"[worker] auto-start installed ({where})", flush=True)
+        return 0
+    if args.remove_autostart:
+        from worker.autostart import remove as remove_autostart
+
+        print("[worker] auto-start removed" if remove_autostart()
+              else "[worker] auto-start was not installed", flush=True)
+        return 0
+    if args.check_update:
+        return _check_update(coordinator_url, args.timeout, tls_verify)
+    if args.tray:
+        from worker.tray import run_tray
+
+        return run_tray(args, run_worker)
     if args.insecure:
         print("[worker] WARNING: --insecure skips TLS verification "
               "(dev self-signed certs only, never across the open internet)", flush=True)
@@ -477,6 +570,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.log_file:
+        _enable_file_log(args.log_file)
     stop_event = threading.Event()
     wake_event = threading.Event()
     ws_connected = threading.Event()

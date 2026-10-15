@@ -672,8 +672,35 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - MIN_EVIDENCE=5 keeps new workers near-prior (0.5) instead of 0%/100% extremes; unrated workers stay eligible (never punished for being new).
 - Duplicate comparison happens before verification in submit_result, so agreement on already-verified originals is cheap and safe.
 **Next steps:**
-- Sprint 24: worker packaging (Windows installer, tray, auto-start, updates).
+- Sprint 24: worker packaging (Windows installer, tray, auto-start, updates) (done below).
 - Cross-network E2E still pending (needs hosted coordinator or VPN + real certs).
+
+---
+
+## 2026-10-15 — Sprint 24: Worker Packaging
+**Goal:** Another person can install the worker — no dev environment, joins the test network (roadmap Sprint 24).
+**Scope (in / out):**
+- In (Full Sprint 24): --setup wizard, PySide6 tray (loop in QThread), HKCU auto-start, --log-file, --check-update (check-only), worker.spec + build script, uninstall script, docs/privacy.md, tests.
+- Out: signed MSIX installer, in-place auto-update downloads, windowed build.
+**Exit condition (verbatim from roadmap):** A clean Windows machine can install the Worker without a development environment and join the test network.
+**Changes:**
+- Worker: setup_wizard.py (--setup: URL, enrollment token, idle/CPU policy, autostart), tray.py (QSystemTrayIcon + WorkerThread, pure helpers tested), autostart.py (HKCU Run, no elevation; data_dir helper), main.py (--setup/--tray/--install-autostart/--remove-autostart/--log-file/--check-update), requirements +PySide6/pyinstaller
+- Build: apps/worker/worker.spec (one-dir console, UPX off — AV false-positive call), scripts/build_worker.ps1, scripts/uninstall_worker.ps1, docs/privacy.md
+- tests: test_packaging.py (13: wizard defaults/custom/bad-CPU, autostart roundtrip on temp key, tray helpers, update 0/2/1, log-file tee)
+- .gitignore already covers dist//build/ (shared Node patterns)
+**Tests run:**
+- `python -m pytest apps/coordinator/tests apps/worker/tests packages/protocol -p no:randomly` → 385 passed
+- `pip install pyside6` → 6.12.0; `npm run build` untouched (dashboard unchanged)
+- Build: PyInstaller 6.19 → dist/worker (~190MB with Qt; 13MB without); exe `--help` + live `--once` register against local coordinator (no venv) — pass
+- Tray imports under pytest (helpers only; no QApplication in tests)
+**Decisions:**
+- UPX off: packed community binaries trigger AV heuristics; size is not our constraint.
+- Update = check-only (exit 0/2/1): silent auto-install without signing infra would violate the Sprint 21/22 trust posture.
+- Worker __version__ bumped 0.1.0-sprint2 → sprint24 (was stale; --check-update compares it to the coordinator version).
+- Auto-start is HKCU (per-user, no elevation); uninstall never self-deletes (documented manual last step).
+**Next steps:**
+- Sprint 25: contributor experience (onboarding flow, settings UI, pause affordances).
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
 
 ---
 
