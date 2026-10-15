@@ -624,8 +624,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Caught by tests: ThreadPoolExecutor.__exit__ joins hung threads (defeats timeouts) → daemon-thread + join(timeout) instead; abandoned threads documented, preemptive kill deferred to Sprint 22.
 - Caught before commit: test_basename collision (test_security.py × 2) — worker file renamed test_worker_security.py.
 **Next steps:**
-- Sprint 22: sandboxed execution (real isolation layer; DO NOT open public registration before it).
+- Sprint 22: sandboxed execution (real isolation layer) (done below).
 - Cross-network E2E still pending (needs hosted coordinator or VPN + real certs).
+
+---
+
+## 2026-10-15 — Sprint 22: Sandboxed Execution
+**Goal:** A real execution isolation layer; least-complex acceptable boundary (roadmap Sprint 22).
+**Scope (in / out):**
+- In (Full Sprint 22): platform evaluation with evidence, Job Object limits + low-integrity child, stdio-JSON runner, run_unit sandboxed path + --sandbox CLI, boundary/parity tests, live sandboxed job.
+- Out: read/network kernel denial (needs AppContainer/elevation — absent here), mandatory gating (S23 decision), Docker route (not installed, grey-licensed on Home).
+**Exit condition (verbatim from roadmap):** A test workload cannot access protected Worker/user resources outside its sandbox.
+**Changes:**
+- NEW worker/sandbox/ (native.py ctypes, launch.py suspended-start, runner.py JSON stdio child, sandbox.py orchestrator): low-integrity token (S-1-16-4096 via AllocateAndInitializeSid), Job Object (memory/process caps, kill-on-close), granted Low-label work dir, one-sample-per-tick unchanged
+- registry.run_unit(sandboxed=True) + main.py --sandbox; capabilities.sandbox flag (worker + coordinator schemas)
+- tests: test_sandbox_execution.py (16: roundtrip, 3-workload parity, tamper refusal, timeout, cleanup, memory-cap kill, setup-failure mapping, unknown-type)
+**Tests run:**
+- full suite both orders → 364 passed (incl. 16 sandbox)
+- Live: --sandbox worker completes 4-unit job (final=10); log reports "job-object-only" boundary honestly; greedy-200MB-under-48MB child killed by the job (test); canary write-denial needs elevation — recorded, not claimed
+**Decisions:**
+- AppContainer profiles REJECTED with evidence: CreateAppContainerProfile absent from this build's advapi32 (ctypes + .NET P/Invoke both confirm; Win11 Home restricted).
+- Low-integrity tokens need elevation (SetTokenInformation → 998 unelevated; SeTcb/SeAssignPrimary/SeCreateToken all NOT HELD) → integrity layer is opt-in/degraded-loud, never silent.
+- What IS enforced here: process isolation, memory/process caps, kill-on-close, write-denial only when elevated. Reads + network remain open — stated in code, quick-reference, and here.
+- ctypes handle-truncation class of bugs hit three times (pseudo-handle err 6, SetInformationJobObject in kernel32 not advapi32, SID arg counts) → explicit restype/argtypes block now standard in native.py.
+**Next steps:**
+- Sprint 23: verification sampling + reputation (or revisit: elevated canary proof, Docker evaluation with user consent).
+- Public registration stays CLOSED per the roadmap gate (this milestone is "satisfactory" for the prototype threat model only).
 
 ---
 

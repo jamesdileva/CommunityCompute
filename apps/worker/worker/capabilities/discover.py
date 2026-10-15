@@ -28,4 +28,14 @@ def discover_capabilities() -> CapabilityProfile:
         gpus=detect_gpus(),
         runtimes=supported_runtimes(),
         cached_models=cached_models(),
+        sandbox=_sandbox_available(),
     )
+
+
+def _sandbox_available() -> bool:
+    try:
+        from worker.sandbox import native
+
+        return native.available()
+    except Exception:  # noqa: BLE001 - discovery must never crash
+        return False

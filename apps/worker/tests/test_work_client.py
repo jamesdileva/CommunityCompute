@@ -88,3 +88,28 @@ def test_work_cycle_executes_and_submits(monkeypatch):
     assert submitted[0]["value"] == 55
     assert submitted[0]["status"] == "completed"
     assert submitted[0]["output_hash"]
+
+
+def test_work_cycle_sandboxed_flag_reaches_run_unit(monkeypatch):
+    """--sandbox flows from the loop into run_unit (Sprint 22 wiring)."""
+    from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+
+    seen: list[dict] = []
+    assignment = {"protocol_version": "0.1.0-sprint6", "work_unit_id": "u9",
+                  "job_id": "j9", "workload_type": "hello_compute",
+                  "range_start": 1, "range_end": 10, "params": {"op": "sum"}}
+    assignment["manifest_signature"] = sign_manifest(assignment, DEV_SIGNING_KEY)
+    monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: assignment)
+
+    real_run_unit = main_mod.run_unit
+
+    def spy(assign, **kwargs):
+        seen.append(kwargs)
+        return real_run_unit(assign, **kwargs)
+
+    monkeypatch.setattr(main_mod, "run_unit", spy)
+    monkeypatch.setattr(main_mod, "submit_result",
+                        lambda *a, **k: {"ok": True})
+    main_mod._attempt_work_cycle("http://127.0.0.1:8000", "w1", 5.0,
+                                 availability=(True, "ok"), sandboxed=True)
+    assert seen and seen[0].get("sandboxed") is True

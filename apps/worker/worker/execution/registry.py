@@ -65,8 +65,15 @@ def run_unit(
     *,
     work_root: str | None = None,
     time_limit: float = DEFAULT_UNIT_TIME_LIMIT,
+    sandboxed: bool = False,
 ) -> UnitResult:
-    """Registry entry used by the worker loop: unknown types fail closed."""
+    """Registry entry used by the worker loop: unknown types fail closed.
+
+    With `sandboxed=True` (Sprint 22) the verified unit runs inside a
+    sandboxed child process (Job Object limits + low-integrity token when
+    available) instead of in-process. Sandbox failures already carry a
+    `status`/`error` payload; in-process failures keep the same shape.
+    """
     executor = executor_for(assignment.get("workload_type", ""))
     if executor is None:
         return UnitResult(
@@ -78,6 +85,9 @@ def run_unit(
             status="failed",
             error="refused: manifest signature missing or invalid",
         )
+    if sandboxed:
+        return _run_sandboxed(assignment, work_root=work_root,
+                              time_limit=time_limit)
     try:
         work_dir_ctx = tempfile.TemporaryDirectory(prefix="unit-", dir=work_root)
     except OSError as exc:
@@ -87,6 +97,29 @@ def run_unit(
     with work_dir_ctx as work_dir:
         scoped = {**assignment, "work_dir": work_dir}
         return _run_timed(executor, scoped, capabilities, time_limit)
+
+
+def _run_sandboxed(
+    assignment: dict,
+    *,
+    work_root: str | None,
+    time_limit: float,
+) -> UnitResult:
+    """Execute inside the sandbox child; map its payload to a UnitResult."""
+    from worker.sandbox.sandbox import run_in_sandbox
+
+    try:
+        payload = run_in_sandbox(assignment, work_root=work_root, time_limit=time_limit)
+    except Exception as exc:  # noqa: BLE001 - sandbox setup failures are unit failures
+        return UnitResult(status="failed", error=f"sandbox setup failed: {exc}")
+    return UnitResult(
+        status=payload.get("status", "failed"),
+        value=payload.get("value"),
+        output_hash=payload.get("output_hash"),
+        error=payload.get("error"),
+        execution_ms=payload.get("execution_ms"),
+        metrics=payload.get("metrics"),
+    )
 
 
 def _run_timed(

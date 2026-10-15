@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 21 - security boundary prototype (allowlist, sealed assignments, worker refusal). Sprints 17-20 done: WebSocket control, stress proof, TLS prototype, worker auth.
+**Status:** Sprint 22 - sandboxed execution (Job Object + low-integrity child, --sandbox opt-in).
 
 ## Core loop (stable abstraction)
 

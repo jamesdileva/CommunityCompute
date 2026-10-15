@@ -112,6 +112,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "(default: WORK_ROOT or <idfile-dir>/work)")
     p.add_argument("--unit-time-limit", type=float, default=300.0,
                    help="Wall-clock seconds allowed per unit execution (Sprint 21)")
+    p.add_argument("--sandbox", action="store_true",
+                   help="Execute units inside the sandboxed child process "
+                        "(Job Object limits; low-integrity token when "
+                        "available). Sprint 22.")
     p.add_argument("--no-ws", action="store_true",
                    help="Disable the WebSocket control socket (Sprint 17); "
                         "heartbeat stays on HTTP and work polls on --interval")
@@ -229,7 +233,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
                         verify: bool | str = True,
                         credential: Credential | None = None,
                         work_root: str | None = None,
-                        unit_time_limit: float = 300.0) -> None:
+                        unit_time_limit: float = 300.0,
+                        sandboxed: bool = False) -> None:
     """Claim one unit, execute, submit. All failures logged, never fatal.
 
     `cached_models` is sent with the claim so the coordinator can prefer
@@ -256,7 +261,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
     if execution_delay > 0:
         time.sleep(execution_delay)  # simulated slow work (failure-test knob)
     result = run_unit(assignment, work_root=work_root,
-                      time_limit=unit_time_limit)  # hardened path (Sprint 21)
+                      time_limit=unit_time_limit,
+                      sandboxed=sandboxed)  # hardened path (Sprint 21/22)
     print(
         f"[worker {worker_id}] unit {unit_id} {assignment.get('range_start')}.."
         f"{assignment.get('range_end')} -> {result.status}"
@@ -460,6 +466,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                         cached_models=cached_model_names(), verify=tls_verify,
                         credential=credential, work_root=_work_root(args),
                         unit_time_limit=args.unit_time_limit,
+                        sandboxed=args.sandbox,
                     )
             _wait_for_next_tick(stop_event, wake_event, args.interval)
     except KeyboardInterrupt:

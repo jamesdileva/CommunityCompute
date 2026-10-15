@@ -51,3 +51,4 @@ class CapabilityProfile(BaseModel):
     gpus: list[GPUInfo] = Field(default_factory=list)
     runtimes: list[str] = Field(default_factory=list)  # executable workload types (Sprint 9)
     cached_models: list[dict] = Field(default_factory=list)  # {name, version} (Sprint 15)
+    sandbox: bool = False  # Job Object child execution available (Sprint 22)

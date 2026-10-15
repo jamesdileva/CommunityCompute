@@ -130,7 +130,14 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --enro
 # WORKLOAD_SIGNING_KEY must match on both sides (dev default warns loudly at startup).
 # per-unit temp work dirs under --work-root (default <idfile-dir>/work), always cleaned;
 # execute() runs under --unit-time-limit (default 300s).
-# Full OS confinement is Sprint 22 — this sprint proves the refusal paths, not isolation.
+
+# Sandboxed execution (Sprint 22, Windows, opt-in): Job Object limits + low-integrity child
+python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --sandbox
+# --sandbox runs each unit in a child process: memory/process caps + kill-on-close
+# (Job Object, always on); low-integrity write-denial needs elevation and is
+# reported honestly per run ("job-object-only" vs "job-object + low-integrity").
+# Without elevation there is NO kernel read/network denial — AppContainer profile
+# API is absent from Win11 Home; containers would need Docker (not installed).
 
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
