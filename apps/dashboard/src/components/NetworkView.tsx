@@ -1,9 +1,34 @@
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
-import type { JobStatus, NetworkSummary } from "../types";
+import type { JobStatus, NetworkCapacity, NetworkSummary } from "../types";
 
-function JobRow({ id }: { id: string }) {
-  const [job, setJob] = useState<JobStatus | null>(null);
+function CapacityStrip() {
+  const [capacity, setCapacity] = useState<NetworkCapacity | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .networkCapacity()
+      .then((c) => alive && setCapacity(c))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!capacity) return null;
+  const gb = (capacity.ram_mb / 1024).toFixed(1);
+  return (
+    <p>
+      Capacity: {capacity.online_workers}/{capacity.total_workers} online ·{" "}
+      {capacity.cpu_cores} cores · {gb} GB RAM · GPUs{" "}
+      {JSON.stringify(capacity.gpus_by_tier)} · versions{" "}
+      {JSON.stringify(capacity.versions)}
+    </p>
+  );
+}
+
+function JobRow({ id }: { id: string }) {  const [job, setJob] = useState<JobStatus | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -86,6 +111,7 @@ export default function NetworkView({ refreshTick }: { refreshTick: number }) {
           <strong>{summary.jobs}</strong>
         </div>
       </div>
+      <CapacityStrip />
       <h3>Jobs</h3>
       {jobs.length === 0 ? (
         <p>No jobs submitted yet.</p>

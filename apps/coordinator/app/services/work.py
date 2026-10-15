@@ -55,13 +55,30 @@ def claim_next_unit(db: Session, worker_id: str,
     group), then everything else — cache affinity is a preference, so
     uncached workers are still served plain units.
     Also enforces: duplicates skip the original's worker; the worker's
-    stored capability profile must satisfy the job's requirements (S9).
+    stored capability profile must satisfy the job's requirements (S9);
+    beta guardrails (Sprint 26): outdated versions and lease hoarding.
     """
     _sweep_expired_leases(db)
     worker = db.get(Worker, worker_id)
     if worker is not None and worker.paused_by_operator:
         log.debug("unit claim refused for operator-paused %s", worker_id)
         return None  # enforcement, not display: paused workers get nothing
+    settings = get_settings()
+    if settings.min_worker_version and worker is not None:
+        if _version_before(worker.worker_version or "", settings.min_worker_version):
+            log.info("unit claim refused for outdated worker %s (%s < %s)",
+                     worker_id, worker.worker_version, settings.min_worker_version)
+            raise OutdatedWorker(worker.worker_version or "", settings.min_worker_version)
+    active = (
+        db.query(WorkUnit)
+        .filter(WorkUnit.assigned_worker_id == worker_id,
+                WorkUnit.status.in_(LEASE_STATES))
+        .count()
+    )
+    if active >= settings.max_leases_per_worker:
+        log.debug("unit claim refused for %s: %d active leases (cap %d)",
+                  worker_id, active, settings.max_leases_per_worker)
+        return None  # anti-hoarding: finish or release before claiming more
     candidates = (
         db.query(WorkUnit)
         .filter_by(status="queued")
@@ -163,6 +180,16 @@ def _compatible(reqs: dict, profile: dict | None, unit_id: str, worker_id: str) 
     if not compatible:
         log.debug("unit %s skipped for %s: %s", unit_id, worker_id, reason)
     return compatible
+
+
+def _version_before(have: str, minimum: str) -> bool:
+    """Naive dotted-version compare (prototype-grade; semver lib is later)."""
+    def parts(value: str) -> list:
+        out = []
+        for chunk in value.split("."):
+            out.append(int(chunk) if chunk.isdigit() else chunk)
+        return out
+    return parts(have) < parts(minimum)
 
 
 def _original_worker(db: Session, duplicate: WorkUnit) -> str | None:
@@ -493,6 +520,15 @@ def _as_float(value: object) -> float | None:
 
 class Conflict(Exception):
     """Late/duplicate result for an already-completed unit (maps to HTTP 409)."""
+
+
+class OutdatedWorker(Exception):
+    """Worker version below the beta minimum (maps to HTTP 426)."""
+
+    def __init__(self, have: str, minimum: str) -> None:
+        super().__init__(f"worker version {have!r} below minimum {minimum!r}")
+        self.have = have
+        self.minimum = minimum
 
 
 def record_disagreement(db: Session, work_unit_id: str, worker_id: str) -> None:

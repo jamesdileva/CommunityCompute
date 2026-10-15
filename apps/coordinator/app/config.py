@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # flow (anonymous callers allowed) while the authenticated path rolls out;
     # set true to lock every worker-facing route (401 without a valid bearer).
     auth_enabled: bool = False
+    # Sprint 26 (beta guardrails): minimum worker version to claim work
+    # (empty = no gate); max simultaneous leases per worker (anti-hoarding).
+    min_worker_version: str = ""
+    max_leases_per_worker: int = 8
     # Sprint 21: HMAC key sealing work assignments. The dev default matches the
     # worker default so LAN prototypes work; ANY production use needs a real
     # secret here (startup warns loudly when the default is in effect).

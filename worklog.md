@@ -723,8 +723,36 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Dashboard shows limits read-only; editing stays local by design (no policy-push channel exists — inventing one here would be scope creep with security implications).
 - Wizard answers are positional; every question has a safe default so Enter-only works end to end.
 **Next steps:**
-- Sprint 26: private community beta (enrollment, versions, monitoring, support logs, abuse controls).
+- Sprint 26: private community beta, mocked as a local swarm (done below).
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-15 — Sprint 26: Private Community Beta (mocked swarm)
+**Goal:** Several independently-controlled machines join/leave/fail/reconnect and contribute with zero DB intervention — mocked as isolated processes (roadmap Sprint 26).
+**Scope (in / out):**
+- In (Full Sprint 26, mocked): capacity endpoint, version distribution + optional 426 gate, per-worker lease cap, --diagnostics redacted bundle, beta_swarm.py harness, docs/beta.md runbook, dashboard capacity strip.
+- Out: real second machines/networks, public enrollment, dashboard settings editing, download-and-install auto-update.
+**Exit condition (verbatim from roadmap):** Several independently controlled computers can join, leave, fail, reconnect, and contribute without manual database intervention.
+**Changes:**
+- Coordinator: api/network.py GET /network/capacity (cores/RAM/GPUs by tier+vendor/cached/runtimes/versions/queue), config MIN_WORKER_VERSION ("") + MAX_LEASES_PER_WORKER (8), claim refuses outdated (426 OutdatedWorker) + hoarders ({} past cap), settings_override accepts arbitrary keys
+- Worker: main.py --diagnostics (id/version/coordinator/credential-presence/policy/capabilities/sandbox/log tail; secret never printed)
+- Harness: scripts/beta_swarm.py (N isolated homes, kill mid-job, operator pause/resume, API-only assertions)
+- Docs: docs/beta.md (invite/monitor/maintain/offboard runbook + what-mocked-means), quick-reference beta section, README status
+- Dashboard: NetworkView CapacityStrip (cores, RAM, GPUs, versions)
+- tests: test_beta.py (6: rollup, empty pool, versions, 426 gate, gate passthrough, lease cap), test_diagnostics.py (3)
+**Tests run:**
+- full suite both orders → 410 passed; `npm run build` → pass
+- Live swarm (3 workers, 12 units): all joined; pc2 killed mid-job; pc3 paused+resumed via API; job **completed 12/12**; summary 3 online + 12/5m; capacity 3 online / 18 cores / queue 0 — pass
+**Decisions:**
+- Mocked = isolated processes, not threads: separate IDs/policies/caches/logs, real kills — the closest single-machine proof of the exit condition; cross-machine networking explicitly still pending.
+- Lease cap (8) and version gate (off by default) are guardrails, not policy: hoarding returns {} (retryable), outdated returns 426 (actionable message), neither punishes reputation.
+- Diagnostics prints credential *presence*, never the value — support bundles must be forwardable without redaction steps.
+- Capacity endpoint counts online workers only for resources (offline capacity isn't capacity).
+**Next steps:**
+- Sprint 27: compute accounting (per-unit auditable contribution records).
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
 
 
 ---

@@ -1,6 +1,6 @@
 /** Typed fetch wrappers for the coordinator API (Sprint 16). */
 
-import type { JobStatus, NetworkSummary, Worker, WorkerStats, WorkUnit } from "../types";
+import type { JobStatus, NetworkCapacity, NetworkSummary, Worker, WorkerStats, WorkUnit } from "../types";
 
 async function get<T>(path: string): Promise<T> {
   const resp = await fetch(path);
@@ -29,4 +29,5 @@ export const api = {
   jobs: () => get<{ id: string }[]>("/jobs"),
   job: (id: string) => get<JobStatus>(`/jobs/${id}`),
   networkSummary: () => get<NetworkSummary>("/network/summary"),
+  networkCapacity: () => get<NetworkCapacity>("/network/capacity"),
 };

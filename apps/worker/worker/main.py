@@ -146,6 +146,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Compare bundled version with the coordinator and exit (Sprint 24)")
     p.add_argument("--status", action="store_true",
                    help="One-screen contributor status: am I contributing? (Sprint 25)")
+    p.add_argument("--diagnostics", action="store_true",
+                   help="Print a redacted support bundle (never includes the credential) (Sprint 26)")
     return p.parse_args(argv)
 
 
@@ -311,6 +313,54 @@ def _print_status(args: argparse.Namespace) -> int:
     print(f"models cached  : {names or 'none'}")
     print(f"sandbox layer  : {'job-object available' if sandbox_native.available() else 'unavailable'}")
     print(f"log file       : {args.log_file or 'console only'}")
+    return 0
+
+
+def _print_diagnostics(args: argparse.Namespace) -> int:
+    """`--diagnostics`: redacted support bundle for operators (Sprint 26).
+
+    Includes identity (not the secret), versions, policy, capabilities,
+    sandbox availability, and log tail. The bearer credential is NEVER
+    printed — only whether one exists.
+    """
+    from worker.capabilities.discover import discover_capabilities
+    from worker.sandbox import native as sandbox_native
+
+    coordinator_url = get_coordinator_url(args.coordinator_url)
+    id_file = get_worker_id_file(args.worker_id_file)
+    credential = load_credential(id_file)
+    worker_id = credential.worker_id if credential else get_or_create_worker_id(id_file)
+    print(f"worker id      : {worker_id}")
+    print(f"worker version : {build_payload(worker_id)['worker_version']}")
+    print(f"coordinator    : {coordinator_url}")
+    print(f"credential     : {'present (value redacted)' if credential else 'absent'}")
+    print(f"python         : {sys.version.split()[0]} on {sys.platform}")
+    try:
+        profile = discover_capabilities(id_file)
+        print(f"capabilities   : cpu={profile.cpu.logical_cores}c "
+              f"ram={profile.ram.total_mb}MB gpus={len(profile.gpus)} "
+              f"runtimes={','.join(profile.runtimes)}")
+        print(f"sandbox        : {'available' if profile.sandbox else 'unavailable'}")
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never crash
+        print(f"capabilities   : FAILED ({exc})")
+    print("policy         :")
+    try:
+        for line in Path(policy_path(id_file)).read_text(encoding="utf-8").splitlines():
+            print(f"  {line}")
+    except OSError as exc:
+        print(f"  unreadable ({exc})")
+    print(f"sandbox layer  : {'job-object available' if sandbox_native.available() else 'unavailable'}; "
+          f"integrity: {'available' if sandbox_native.integrity_available() else 'needs elevation'}")
+    if args.log_file and Path(args.log_file).exists():
+        print("log tail       :")
+        try:
+            tail = Path(args.log_file).read_text(encoding="utf-8").splitlines()[-15:]
+            for line in tail:
+                print(f"  {line[-200:]}")
+        except OSError as exc:
+            print(f"  unreadable ({exc})")
+    else:
+        print("log file       : none configured (pass --log-file)")
     return 0
 
 
@@ -527,6 +577,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
         return _check_update(coordinator_url, args.timeout, tls_verify)
     if args.status:
         return _print_status(args)
+    if args.diagnostics:
+        return _print_diagnostics(args)
     if args.tray:
         from worker.tray import run_tray
 

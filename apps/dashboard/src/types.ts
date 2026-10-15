@@ -67,6 +67,19 @@ export interface NetworkSummary {
   completed_last_5m: number;
 }
 
+export interface NetworkCapacity {
+  online_workers: number;
+  total_workers: number;
+  cpu_cores: number;
+  ram_mb: number;
+  gpus_by_tier: Record<string, number>;
+  gpus_by_vendor: Record<string, number>;
+  cached_models: Record<string, number>;
+  runtimes: Record<string, number>;
+  versions: Record<string, number>;
+  queued_units: number;
+}
+
 export interface WorkerStats {
   worker_id: string;
   completed_units: number;

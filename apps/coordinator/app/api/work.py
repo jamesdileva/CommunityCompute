@@ -10,7 +10,7 @@ from app.db import get_db
 from app.models.result import Result
 from app.schemas.work import ClaimRequest, ResultOut, WorkResult
 from app.services import work as work_service
-from app.services.work import Conflict
+from app.services.work import Conflict, OutdatedWorker
 
 log = logging.getLogger("coordinator")
 
@@ -28,7 +28,14 @@ def claim_work(worker_id: str, body: ClaimRequest | None = None,
     uncached claims still get served.
     """
     cached = set(body.cached_models) if body else set()
-    assignment = work_service.claim_next_unit(db, worker_id, cached_models=cached)
+    try:
+        assignment = work_service.claim_next_unit(db, worker_id, cached_models=cached)
+    except OutdatedWorker as exc:
+        raise HTTPException(
+            status_code=426,
+            detail={"error": "worker update required", "have": exc.have,
+                    "minimum": exc.minimum},
+        )
     if assignment is None:
         return {}
     return assignment.model_dump()

@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 25 - contributor experience (guided onboarding, limits UI, one-screen status).
+**Status:** Sprint 26 - private community beta, mocked as a local swarm (join/leave/fail/reconnect with zero DB intervention).
 
 ## Core loop (stable abstraction)
 

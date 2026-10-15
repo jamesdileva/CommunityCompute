@@ -15,7 +15,7 @@ def override_settings(**overrides) -> Iterator[None]:
     from app.config import get_settings
 
     get_settings.cache_clear()  # drop the pre-env snapshot
-    saved = {k: os.environ.get(k) for k in _ENV_KEYS}
+    saved = {k: os.environ.get(k) for k in set(_ENV_KEYS) | set(overrides)}
     try:
         os.environ.update(overrides)
         yield

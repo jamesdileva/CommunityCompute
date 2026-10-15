@@ -247,6 +247,18 @@ Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 | `LEASE_DURATION_SECONDS` | `60` | coordinator lease expiry |
 | `WORKER_ID_FILE` | `.worker_id` | worker identity |
 | `LOG_LEVEL` | `info` | coordinator |
+| `MIN_WORKER_VERSION` | `` (off) | claim gate: outdated workers get 426, no new work |
+| `MAX_LEASES_PER_WORKER` | `8` | anti-hoarding: simultaneous leases per worker |
+
+## Private beta (Sprint 26, mocked swarm — see docs/beta.md for the runbook)
+
+```powershell
+python scripts/beta_swarm.py --workers 3 --units 12
+# spins isolated workers, kills one mid-job, pauses/resumes another,
+# asserts completion purely via APIs (homes kept in %TEMP%\beta-swarm-*)
+```
+# capacity: GET /network/capacity (cores/RAM/GPUs/versions/queue)
+# support bundle: worker.exe --diagnostics (credential never printed)
 
 ## Sprint workflow (per AGENTS.md)
 

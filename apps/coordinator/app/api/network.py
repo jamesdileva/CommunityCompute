@@ -1,4 +1,4 @@
-"""Network + worker-activity endpoints for the dashboard (Sprint 16)."""
+"""Network + worker-activity endpoints for the dashboard (Sprint 16; Sprint 26: capacity)."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db
 from app.models.attempt import WorkUnitAttempt
+from app.models.capability import WorkerCapability
 from app.models.job import Job
 from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.models.worker import Worker
 from app.schemas.job import WorkUnitOut
 from app.services.availability import effective_status
+from app.services.tiers import hardware_tiers
 
 router = APIRouter()
 
@@ -47,6 +49,59 @@ def network_summary(db: Session = Depends(get_db)) -> dict:
         "units": units_by_status,
         "jobs": jobs_total,
         "completed_last_5m": recent,
+    }
+
+
+@router.get("/network/capacity")
+def network_capacity(db: Session = Depends(get_db)) -> dict:
+    """Fleet capacity rollup for the beta dashboard (Sprint 26).
+
+    Sums what the pool can offer right now: online workers only contribute
+    their cores/RAM/GPUs; versions flag outdated workers for updates.
+    """
+    timeout = get_settings().heartbeat_timeout_seconds
+    workers = db.query(Worker).all()
+    online = [w for w in workers if effective_status(w, timeout) == "online"]
+
+    versions: dict[str, int] = {}
+    for w in workers:
+        versions[w.worker_version or "unknown"] = versions.get(w.worker_version or "unknown", 0) + 1
+
+    cores = ram_mb = 0
+    gpus_by_tier: dict[str, int] = {}
+    gpus_by_vendor: dict[str, int] = {}
+    cached: dict[str, int] = {}
+    runtimes: dict[str, int] = {}
+    for w in online:
+        cap = db.get(WorkerCapability, w.id)
+        profile = cap.profile if cap and isinstance(cap.profile, dict) else {}
+        cpu = profile.get("cpu") or {}
+        cores += cpu.get("physical_cores") or cpu.get("logical_cores") or 0
+        ram_mb += (profile.get("ram") or {}).get("total_mb") or 0
+        for gpu in profile.get("gpus") or []:
+            tiers = hardware_tiers({**profile, "gpus": [gpu]})
+            tier = tiers.get("gpu") or "unknown"
+            gpus_by_tier[tier] = gpus_by_tier.get(tier, 0) + 1
+            vendor = str(gpu.get("vendor", "unknown"))
+            gpus_by_vendor[vendor] = gpus_by_vendor.get(vendor, 0) + 1
+        for model in profile.get("cached_models") or []:
+            key = f"{model.get('name')}@{model.get('version')}"
+            cached[key] = cached.get(key, 0) + 1
+        for runtime in profile.get("runtimes") or []:
+            runtimes[runtime] = runtimes.get(runtime, 0) + 1
+
+    units = db.query(WorkUnit.status, func.count(WorkUnit.id)).group_by(WorkUnit.status).all()
+    return {
+        "online_workers": len(online),
+        "total_workers": len(workers),
+        "cpu_cores": cores,
+        "ram_mb": ram_mb,
+        "gpus_by_tier": gpus_by_tier,
+        "gpus_by_vendor": gpus_by_vendor,
+        "cached_models": cached,
+        "runtimes": runtimes,
+        "versions": versions,
+        "queued_units": dict(units).get("queued", 0),
     }
 
 
