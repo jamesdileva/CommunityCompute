@@ -13,7 +13,8 @@ from worker.policy.schema import BATTERY_PLUGGED_ONLY, AvailabilityPolicy
 from worker.policy.state import MachineState
 
 
-def evaluate(policy: AvailabilityPolicy, state: MachineState) -> tuple[bool, str]:
+def evaluate(policy: AvailabilityPolicy, state: MachineState,
+             bandwidth_ledger=None) -> tuple[bool, str]:
     """(available, reason). Reason is "ok" when available."""
     if policy.paused:
         return False, "paused by contributor"
@@ -57,6 +58,12 @@ def evaluate(policy: AvailabilityPolicy, state: MachineState) -> tuple[bool, str
             return False, (
                 f"user active {state.idle_seconds:.0f}s < "
                 f"{policy.idle_threshold_seconds}s"
+            )
+
+    if bandwidth_ledger is not None and policy.bandwidth_mbps is not None:
+        if bandwidth_ledger.over_budget(policy.bandwidth_mbps):
+            return False, (
+                f"upload cap reached ({policy.bandwidth_mbps} Mbps per 60s window)"
             )
 
     return True, "ok"

@@ -32,35 +32,48 @@ def test_wizard_defaults(tmp_path):
     out: list[str] = []
     configured = run_setup(
         tmp_path / ".worker_id",
-        input_fn=_answers(["", "", "", "", ""]),
+        input_fn=_answers(["", "", "", "", "", "", "", "", "", ""]),
         print_fn=out.append,
     )
     assert configured["coordinator_url"] == "http://127.0.0.1:8000"
     assert configured["enrollment_token"] is None
     assert configured["idle_only"] is True
     assert configured["max_cpu_percent"] == 80.0
+    assert configured["max_gpu_percent"] == 80.0
+    assert configured["temperature_ceiling_c"] is None
+    assert configured["battery_policy"] == "allow"
+    assert configured["bandwidth_mbps"] is None
     assert configured["autostart"] is False
     policy = json.loads((tmp_path / "policy.json").read_text(encoding="utf-8"))
     assert policy["idle_only"] is True
     assert any("worker --coordinator-url" in line for line in out)
     assert any("docs/privacy.md" in line for line in out)
+    assert any("Hardware scan" in line for line in out)
+    assert any("Contribution class:" in line for line in out)
 
 
 def test_wizard_custom_answers(tmp_path):
     configured = run_setup(
         tmp_path / ".worker_id",
-        input_fn=_answers(["http://pc:8000", "tok-123", "y", "50", "n"]),
+        input_fn=_answers(["http://pc:8000", "tok-123", "y", "50", "60",
+                           "70", "plugged_only", "9-17", "10", "n"]),
         print_fn=lambda _line: None,
     )
     assert configured["coordinator_url"] == "http://pc:8000"
     assert configured["enrollment_token"] == "tok-123"
     assert configured["max_cpu_percent"] == 50.0
+    assert configured["max_gpu_percent"] == 60.0
+    assert configured["temperature_ceiling_c"] == 70.0
+    assert configured["battery_policy"] == "plugged_only"
+    assert configured["bandwidth_mbps"] == 10.0
+    saved = json.loads((tmp_path / "policy.json").read_text(encoding="utf-8"))
+    assert saved["allowed_hours"] == {"start_hour": 9, "end_hour": 17, "days": []}
 
 
 def test_wizard_bad_cpu_falls_back_to_default(tmp_path):
     configured = run_setup(
         tmp_path / ".worker_id",
-        input_fn=_answers(["", "", "", "lots", ""]),
+        input_fn=_answers(["", "", "", "lots", "", "", "", "", "", ""]),
         print_fn=lambda _line: None,
     )
     assert configured["max_cpu_percent"] == 80.0

@@ -19,6 +19,8 @@ export interface CapabilityProfile {
   gpus: GpuInfo[];
   runtimes: string[];
   cached_models: { name: string; version: string }[];
+  sandbox?: boolean;
+  policy_summary?: Record<string, unknown> | null;
 }
 
 export interface Worker {

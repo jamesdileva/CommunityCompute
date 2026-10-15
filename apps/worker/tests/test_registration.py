@@ -104,7 +104,7 @@ def test_run_loop_registers_once_then_ticks(monkeypatch, tmp_path):
     monkeypatch.setattr(main_mod, "report_resources",
                         lambda *a, **k: events.append("resources"))
     monkeypatch.setattr(main_mod, "_availability",
-                        lambda policy: ((True, "ok"),
+                        lambda policy, ledger=None: ((True, "ok"),
                                         {"available": True, "paused": False, "reason": "ok"},
                                         {"cpu_percent": 1.0}))
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: None)  # idle queue

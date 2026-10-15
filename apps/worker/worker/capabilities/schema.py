@@ -52,3 +52,5 @@ class CapabilityProfile(BaseModel):
     runtimes: list[str] = Field(default_factory=list)  # executable workload types (Sprint 9)
     cached_models: list[dict] = Field(default_factory=list)  # {name, version} (Sprint 15)
     sandbox: bool = False  # Job Object child execution available (Sprint 22)
+    # Sprint 25: contributor-visible policy summary (limits only, no secrets).
+    policy_summary: dict = Field(default_factory=dict)

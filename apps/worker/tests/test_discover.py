@@ -15,7 +15,7 @@ def test_profile_is_complete_and_versioned():
     assert len(profile.gpus) >= 1  # UnknownProvider guarantees a slot
     payload = profile.model_dump()
     assert set(payload) == {"schema_version", "cpu", "ram", "os", "gpus", "runtimes",
-                            "cached_models", "sandbox"}
+                            "cached_models", "sandbox", "policy_summary"}
     assert "hello_compute" in payload["runtimes"]
 
 

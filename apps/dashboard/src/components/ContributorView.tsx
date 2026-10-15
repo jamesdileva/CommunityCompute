@@ -15,6 +15,22 @@ function fmtMb(mb: number | null | undefined): string {
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
 }
 
+function formatPolicy(summary: Record<string, unknown> | null | undefined): string {
+  if (!summary || Object.keys(summary).length === 0) return "defaults (edit policy.json)";
+  const parts: string[] = [];
+  if (summary.idle_only) parts.push("idle-only");
+  if (typeof summary.max_cpu_percent === "number") parts.push(`CPU≤${summary.max_cpu_percent}%`);
+  if (typeof summary.max_gpu_percent === "number") parts.push(`GPU≤${summary.max_gpu_percent}%`);
+  if (typeof summary.temperature_ceiling_c === "number")
+    parts.push(`temp≤${summary.temperature_ceiling_c}C`);
+  if (summary.battery_policy && summary.battery_policy !== "allow")
+    parts.push(`battery: ${summary.battery_policy}`);
+  const hours = summary.allowed_hours as { start_hour?: number; end_hour?: number } | null;
+  if (hours && typeof hours.start_hour === "number") parts.push(`${hours.start_hour}-${hours.end_hour}h`);
+  if (typeof summary.bandwidth_mbps === "number") parts.push(`up≤${summary.bandwidth_mbps}Mbps`);
+  return parts.length > 0 ? parts.join(" · ") : "defaults (edit policy.json)";
+}
+
 function WorkerCard({
   worker,
   onChanged,
@@ -99,6 +115,10 @@ function WorkerCard({
         <div>
           <dt>Workloads</dt>
           <dd>{(worker.capabilities?.runtimes ?? []).join(", ") || "?"}</dd>
+        </div>
+        <div>
+          <dt>Contribution limits</dt>
+          <dd>{formatPolicy(worker.capabilities?.policy_summary)}</dd>
         </div>
         <div>
           <dt>Current work</dt>

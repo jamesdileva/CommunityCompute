@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 23 - work verification and reputation (reliability scores from conduct history).
+**Status:** Sprint 25 - contributor experience (guided onboarding, limits UI, one-screen status).
 
 ## Core loop (stable abstraction)
 

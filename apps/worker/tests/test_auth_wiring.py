@@ -113,7 +113,7 @@ def test_ws_thread_receives_token(tmp_path, monkeypatch):
                         lambda *a, **k: {"status": "online"})
     monkeypatch.setattr(main_mod, "report_resources", lambda *a, **k: None)
     monkeypatch.setattr(main_mod, "_availability",
-                        lambda policy: ((True, "ok"),
+                        lambda policy, ledger=None: ((True, "ok"),
                                         {"available": True, "paused": False, "reason": "ok"},
                                         {}))
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: None)
@@ -139,7 +139,7 @@ def test_no_credential_no_token(tmp_path, monkeypatch):
                         lambda *a, **k: {"status": "online"})
     monkeypatch.setattr(main_mod, "report_resources", lambda *a, **k: None)
     monkeypatch.setattr(main_mod, "_availability",
-                        lambda policy: ((True, "ok"),
+                        lambda policy, ledger=None: ((True, "ok"),
                                         {"available": True, "paused": False, "reason": "ok"},
                                         {}))
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: None)

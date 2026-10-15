@@ -50,6 +50,7 @@ from worker.policy.store import (  # noqa: E402
     save_policy,
     set_paused,
 )
+from worker.policy.bandwidth import BandwidthLedger  # noqa: E402
 from worker.monitoring import build_report, report_resources  # noqa: E402
 from worker.models.cache import default_cache_dir, ModelCache  # noqa: E402
 from worker.capabilities.discover import cached_models  # noqa: E402
@@ -143,6 +144,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Also log to this file (rotating, 1MB x3; default: off)")
     p.add_argument("--check-update", action="store_true",
                    help="Compare bundled version with the coordinator and exit (Sprint 24)")
+    p.add_argument("--status", action="store_true",
+                   help="One-screen contributor status: am I contributing? (Sprint 25)")
     return p.parse_args(argv)
 
 
@@ -257,17 +260,73 @@ def _enable_file_log(path: str) -> None:
     sys.stderr = _Tee(sys.stderr)
 
 
+def _print_status(args: argparse.Namespace) -> int:
+    """`--status`: identity, reachability, policy, cache, sandbox in one screen."""
+    from worker.capabilities.discover import cached_models, policy_summary
+    from worker.policy.engine import evaluate as evaluate_policy
+    from worker.policy.state import collect_state
+    from worker.sandbox import native as sandbox_native
+
+    coordinator_url = get_coordinator_url(args.coordinator_url)
+    tls_verify = get_tls_verify(args.ca_bundle, args.insecure)
+    id_file = get_worker_id_file(args.worker_id_file)
+    credential = load_credential(id_file)
+    worker_id = credential.worker_id if credential else get_or_create_worker_id(id_file)
+    print(f"worker id      : {worker_id}")
+    print(f"coordinator    : {coordinator_url}")
+    print(f"credential     : {'enrolled' if credential else 'anonymous (no credential.json)'}")
+
+    reachable = "unknown"
+    try:
+        body = httpx.get(f"{coordinator_url.rstrip('/')}/health",
+                         timeout=args.timeout, verify=tls_verify).json()
+        reachable = f"reachable (coordinator {body.get('version', '?')})"
+    except Exception as exc:  # noqa: BLE001 - unreachable is a status, not a crash
+        reachable = f"unreachable ({exc})"
+    print(f"connectivity   : {reachable}")
+
+    policy = load_policy(policy_path(id_file))
+    if policy.paused:
+        availability = "PAUSED — not contributing"
+    else:
+        available, reason = evaluate_policy(policy, collect_state())
+        availability = "contributing (policy allows)" if available else f"holding ({reason})"
+    print(f"participation  : {availability}")
+
+    summary = policy_summary(id_file)
+    if summary:
+        print("current limits :")
+        print(f"  idle-only={summary.get('idle_only')} "
+              f"cpu<={summary.get('max_cpu_percent')}% "
+              f"gpu<={summary.get('max_gpu_percent')}% "
+              f"temp<={summary.get('temperature_ceiling_c')}C "
+              f"battery={summary.get('battery_policy')}")
+        if summary.get("allowed_hours"):
+            h = summary["allowed_hours"]
+            print(f"  hours={h.get('start_hour')}-{h.get('end_hour')}")
+        if summary.get("bandwidth_mbps"):
+            print(f"  upload cap={summary['bandwidth_mbps']} Mbps/60s")
+    models = cached_models()
+    names = ", ".join(f"{m.get('name')}@{m.get('version')}" for m in models)
+    print(f"models cached  : {names or 'none'}")
+    print(f"sandbox layer  : {'job-object available' if sandbox_native.available() else 'unavailable'}")
+    print(f"log file       : {args.log_file or 'console only'}")
+    return 0
+
+
 def _policy_file(args: argparse.Namespace) -> Path:
     if args.policy_file:
         return Path(args.policy_file)
     return policy_path(get_worker_id_file(args.worker_id_file))
 
 
-def _availability(policy: AvailabilityPolicy) -> tuple[tuple[bool, str], dict, dict]:
+def _availability(policy: AvailabilityPolicy,
+                  bandwidth_ledger: BandwidthLedger | None = None
+                  ) -> tuple[tuple[bool, str], dict, dict]:
     """One sampling pass: (available, reason) + availability payload + telemetry report."""
     try:
         state = collect_state()
-        available, reason = evaluate_policy(policy, state)
+        available, reason = evaluate_policy(policy, state, bandwidth_ledger)
         availability = {"available": available, "paused": policy.paused, "reason": reason}
         return (available, reason), availability, build_report(state)
     except Exception as exc:  # noqa: BLE001 - sampling failure must not silence the worker
@@ -305,7 +364,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
                         credential: Credential | None = None,
                         work_root: str | None = None,
                         unit_time_limit: float = 300.0,
-                        sandboxed: bool = False) -> None:
+                        sandboxed: bool = False,
+                        bandwidth: BandwidthLedger | None = None) -> None:
     """Claim one unit, execute, submit. All failures logged, never fatal.
 
     `cached_models` is sent with the claim so the coordinator can prefer
@@ -329,6 +389,8 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
     if not assignment:
         return  # nothing queued
     unit_id = assignment.get("work_unit_id")
+    # Sprint 25: account the claim request's upload cost up front.
+    claim_bytes = _json_size({"cached_models": cached_models or []})
     if execution_delay > 0:
         time.sleep(execution_delay)  # simulated slow work (failure-test knob)
     result = run_unit(assignment, work_root=work_root,
@@ -357,6 +419,19 @@ def _attempt_work_cycle(coordinator_url: str, worker_id: str, timeout: float,
         return
     if submitted.get("status") == "already_completed":
         print(f"[worker {worker_id}] unit {unit_id} already completed elsewhere", flush=True)
+    # Account this cycle's upload cost (claim + result bodies).
+    if bandwidth is not None:
+        bandwidth.record(claim_bytes + _json_size(body))
+
+
+def _json_size(payload: object) -> int:
+    """UTF-8 byte size of the JSON we actually send (bandwidth accounting)."""
+    import json
+
+    try:
+        return len(json.dumps(payload).encode("utf-8"))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _wait_for_next_tick(stop_event: threading.Event, wake_event: threading.Event,
@@ -450,6 +525,8 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
         return 0
     if args.check_update:
         return _check_update(coordinator_url, args.timeout, tls_verify)
+    if args.status:
+        return _print_status(args)
     if args.tray:
         from worker.tray import run_tray
 
@@ -486,6 +563,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
     heartbeat_interval = max(args.heartbeat_interval, args.interval)
     next_heartbeat = 0.0
     _last_cached = cached_models()  # re-report capabilities when this changes
+    bandwidth = BandwidthLedger()  # Sprint 25: rolling upload accounting
     ws_thread = None
     if args.loop and ws_loop_fn is not None and not args.no_ws:
         ws_thread = threading.Thread(
@@ -529,7 +607,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                 # (cheap JSON read; a corrupt file falls back to defaults).
                 policy = load_policy(policy_file)
                 # One sampling pass per tick: telemetry + policy gate + heartbeat payload
-                verdict, availability, report = _availability(policy)
+                verdict, availability, report = _availability(policy, bandwidth)
                 report_resources(coordinator_url, worker_id, report, args.timeout,
                                  verify=tls_verify, credential=credential)
                 if now >= next_heartbeat:
@@ -559,7 +637,7 @@ def run_worker(args: argparse.Namespace, stop_event: threading.Event,
                         cached_models=cached_model_names(), verify=tls_verify,
                         credential=credential, work_root=_work_root(args),
                         unit_time_limit=args.unit_time_limit,
-                        sandboxed=args.sandbox,
+                        sandboxed=args.sandbox, bandwidth=bandwidth,
                     )
             _wait_for_next_tick(stop_event, wake_event, args.interval)
     except KeyboardInterrupt:

@@ -699,8 +699,33 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Worker __version__ bumped 0.1.0-sprint2 → sprint24 (was stale; --check-update compares it to the coordinator version).
 - Auto-start is HKCU (per-user, no elevation); uninstall never self-deletes (documented manual last step).
 **Next steps:**
-- Sprint 25: contributor experience (onboarding flow, settings UI, pause affordances).
+- Sprint 25: contributor experience (guided onboarding, limits UI, one-screen status) (done below).
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-15 — Sprint 25: Contributor Experience
+**Goal:** Joining understandable and safe — scan, estimate, configure, pause (roadmap Sprint 25).
+**Scope (in / out):**
+- In (Full Sprint 25): capability estimate module, bandwidth_mbps policy + rolling enforcement, policy_summary in capabilities (both schemas), extended --setup chain, --status CLI, dashboard limits display, tests.
+- Out: dashboard settings editing (needs policy-push channel — a real feature, later), sub-HTTP bandwidth shaping, onboarding GUI.
+**Exit condition (verbatim from roadmap):** A non-developer can understand what is being shared, configure limits, and pause participation.
+**Changes:**
+- Worker: capability_estimate.py (class buckets, plain-language lines, workload fit notes), policy/bandwidth.py (60s rolling ledger, injectable clock), policy schema +bandwidth_mbps, engine bandwidth gate (cap-aware), main.py ledger per loop + byte accounting on claim/result + --status screen, setup_wizard.py full chain (scan → estimate → 8 policy questions → join), capabilities policy_summary (worker + coordinator schemas, discovery)
+- Dashboard: ContributorView "Contribution limits" row + formatPolicy()
+- tests: test_contributor_experience.py (16: buckets, lines, hours parse, full wizard flow, bandwidth cap, ledger math/rollover/negatives, engine gate, summary exclusion of paused)
+**Tests run:**
+- full suite both orders → 401 passed; `npm run build` → pass
+- Live: piped-answer --setup (scan → estimate → policy → join guidance) exit 0; --status shows id/reachability/participation/limits/cache/sandbox; schedule gate correctly reported "holding (hour 18 outside 9-17)"; dashboard builds with the limits row
+**Decisions:**
+- Bandwidth enforcement is byte-accounting + claim-delay (same fail-closed gate shape); payloads are KB-scale so the mechanism is the deliverable — stated in code.
+- Policy summary excludes `paused` (status surfaces it) and secrets (there are none in policy, but the exclusion is structural).
+- Dashboard shows limits read-only; editing stays local by design (no policy-push channel exists — inventing one here would be scope creep with security implications).
+- Wizard answers are positional; every question has a safe default so Enter-only works end to end.
+**Next steps:**
+- Sprint 26: private community beta (enrollment, versions, monitoring, support logs, abuse controls).
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
 
 ---
 

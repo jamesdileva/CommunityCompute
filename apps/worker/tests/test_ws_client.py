@@ -179,7 +179,7 @@ def test_ws_connected_skips_http_heartbeat(monkeypatch, tmp_path):
     monkeypatch.setattr(main_mod, "report_resources",
                         lambda *a, **k: events.append("resources"))
     monkeypatch.setattr(main_mod, "_availability",
-                        lambda policy: ((True, "ok"),
+                        lambda policy, ledger=None: ((True, "ok"),
                                         {"available": True, "paused": False, "reason": "ok"},
                                         {"cpu_percent": 1.0}))
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: None)  # idle queue

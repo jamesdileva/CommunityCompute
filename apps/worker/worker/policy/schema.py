@@ -34,3 +34,7 @@ class AvailabilityPolicy(BaseModel):
     temperature_ceiling_c: float | None = Field(default=None, ge=0)
     battery_policy: str = Field(default=BATTERY_ALLOW)  # allow | plugged_only
     allowed_hours: ScheduleWindow | None = None
+    # Sprint 25: rolling upload cap (MB per 60s window, claim+result payloads).
+    # Prototype payloads are KB-scale, so the mechanism (account + throttle)
+    # is what this proves; the number matters once artifacts grow (S15+).
+    bandwidth_mbps: float | None = Field(default=None, gt=0)

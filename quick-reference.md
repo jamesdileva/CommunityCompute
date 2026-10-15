@@ -143,6 +143,15 @@ python apps/worker/worker/main.py --setup
 # 7. uninstall: scripts/uninstall_worker.ps1  (stops worker, removes autostart, optional data wipe)
 # Privacy: docs/privacy.md (what's sent, what's never touched, how to leave)
 
+# Contributor experience (Sprint 25): onboarding chain + one-screen status
+# --setup now runs: coordinator -> identity -> HARDWARE SCAN -> capability estimate
+#   -> full policy (idle/cpu/gpu/temp/battery/hours/bandwidth) -> autostart -> join
+python apps/worker/worker/main.py --setup
+# --status: am I contributing? (id, reachability, participation, limits, cache, sandbox)
+python apps/worker/worker/main.py --status
+# Contributor tab shows each worker's limits read-only (from capabilities.policy_summary);
+# limits are edited locally (policy.json / --setup), never pushed from the server.
+
 # Sandboxed execution (Sprint 22, Windows, opt-in): Job Object limits + low-integrity child
 python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop --sandbox
 # --sandbox runs each unit in a child process: memory/process caps + kill-on-close
