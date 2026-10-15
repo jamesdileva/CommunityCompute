@@ -50,7 +50,10 @@ def submit_result(
     except KeyError:
         raise HTTPException(status_code=404, detail={"error": "unknown work unit"})
     except Conflict:
+        # A conflicting late result disagrees with the confirmed value —
+        # disagreement evidence against the submitter (Sprint 23).
         db.rollback()
+        work_service.record_disagreement(db, work_unit_id, payload.worker_id)
         raise HTTPException(
             status_code=409, detail={"error": "already completed by another worker"}
         )

@@ -139,6 +139,13 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # Without elevation there is NO kernel read/network denial — AppContainer profile
 # API is absent from Win11 Home; containers would need Docker (not installed).
 
+# Reputation (Sprint 23): reliability is derived from conduct, never stored
+# GET /workers/{id}/reputation -> {score, rated, outcomes, accepted/rejected/
+#   expired/agreed/disagreed, rejections_by_kind, recent}
+# score = Laplace-smoothed success rate; unrated until 5 scored outcomes.
+# every accepted/rejected result, expired lease, and duplicate agree/disagree
+# is recorded; lying workers sink toward 0 while honest ones rise.
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

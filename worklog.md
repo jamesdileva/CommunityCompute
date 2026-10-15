@@ -648,8 +648,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - What IS enforced here: process isolation, memory/process caps, kill-on-close, write-denial only when elevated. Reads + network remain open — stated in code, quick-reference, and here.
 - ctypes handle-truncation class of bugs hit three times (pseudo-handle err 6, SetInformationJobObject in kernel32 not advapi32, SID arg counts) → explicit restype/argtypes block now standard in native.py.
 **Next steps:**
-- Sprint 23: verification sampling + reputation (or revisit: elevated canary proof, Docker evaluation with user consent).
+- Sprint 23: verification sampling + reputation (done below).
 - Public registration stays CLOSED per the roadmap gate (this milestone is "satisfactory" for the prototype threat model only).
+
+---
+
+## 2026-10-15 — Sprint 23: Work Verification & Reputation
+**Goal:** Untrusted workers become measurable — wrong output is detected and the score drops (roadmap Sprint 23).
+**Scope (in / out):**
+- In (Full Sprint 23): append-only reputation_events, Laplace-smoothed reliability service, hooks on submit/sweep/duplicates/conflicts, GET /workers/{id}/reputation, tests.
+- Out: scheduling use of scores (S31), dashboard display (follow-up), slashing/economics (S27+).
+**Exit condition (verbatim from roadmap):** A Worker producing intentionally incorrect output is detected and its reliability score decreases.
+**Changes:**
+- Coordinator: models/reputation.py (5 event kinds, evidence-not-verdict), services/reputation.py (score=(pos+1)/(total+2), MIN_EVIDENCE=5, unrated below), work.py hooks (accepted/rejected+kind on submit, expired on sweep, agreed on confirm, disagreed on overturn + 409-conflict), api/workers.py GET reputation endpoint, version → 0.1.0-sprint23
+- tests: test_reputation.py (8: unrated, 404, smoothing, exit-condition, expiry, agree, disagree, bad-event)
+- quick-reference.md (reputation section), README status
+**Tests run:**
+- full suite both orders → 372 passed
+- Live: honest worker 6/6 accepted → score 0.875; lying worker 6 rejections (all value_mismatch) → score 0.125 — pass
+**Decisions:**
+- Score is always derived from the event log, never stored — the formula can evolve without migrations.
+- Idempotent resubmits record nothing (no new evidence, no double count); 409 conflicts record disagreement against the submitter.
+- MIN_EVIDENCE=5 keeps new workers near-prior (0.5) instead of 0%/100% extremes; unrated workers stay eligible (never punished for being new).
+- Duplicate comparison happens before verification in submit_result, so agreement on already-verified originals is cheap and safe.
+**Next steps:**
+- Sprint 24: worker packaging (Windows installer, tray, auto-start, updates).
+- Cross-network E2E still pending (needs hosted coordinator or VPN + real certs).
 
 ---
 

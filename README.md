@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 22 - sandboxed execution (Job Object + low-integrity child, --sandbox opt-in).
+**Status:** Sprint 23 - work verification and reputation (reliability scores from conduct history).
 
 ## Core loop (stable abstraction)
 

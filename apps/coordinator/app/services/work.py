@@ -30,6 +30,7 @@ from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
+from app.services import reputation
 from app.services.compat import check
 from app.services.workloads import expected as workload_expected
 from app.services.workloads import output_hash as workload_output_hash
@@ -202,6 +203,9 @@ def _sweep_expired_leases(db: Session) -> int:
         if attempt is not None and attempt.outcome is None:
             attempt.ended_at = now
             attempt.outcome = "expired"
+            # Sprint 23: the vanished worker earns an expiry mark (fault signal).
+            reputation.record(db, attempt.worker_id, reputation.LEASE_EXPIRED,
+                              work_unit_id=unit.id)
         unit.status = "queued"
         unit.lease_id = None
         unit.lease_worker_id = None
@@ -275,6 +279,8 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
 
     if ok:
         log.info("unit %s completed by %s (%sms)", work_unit_id, payload.worker_id, execution_ms)
+        reputation.record(db, payload.worker_id, reputation.RESULT_ACCEPTED,
+                          work_unit_id=work_unit_id)
         if unit.verify_of is None:
             _maybe_spawn_duplicate(db, job, unit)
         else:
@@ -282,8 +288,12 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
     else:
         log.info("unit %s REJECTED from %s [%s]: %s",
                  work_unit_id, payload.worker_id, kind, error)
+        reputation.record(db, payload.worker_id, reputation.RESULT_REJECTED,
+                          failure_kind=kind, work_unit_id=work_unit_id,
+                          detail=error)
         if unit.verify_of is not None and kind == VERIFICATION_DISAGREEMENT:
-            _overturn_original(db, unit, error or "verification disagreement")
+            _overturn_original(db, unit, payload.worker_id,
+                               error or "verification disagreement")
     _refresh_job_status(db, unit.job_id)
     return ok, (None if ok else (error or "rejected")), result
 
@@ -373,10 +383,13 @@ def _confirm_original(db: Session, duplicate: WorkUnit, dup_result: Result) -> N
         return
     original_result.verified_by = dup_result.worker_id
     db.commit()
+    reputation.record(db, dup_result.worker_id, reputation.VERIFICATION_AGREED,
+                      work_unit_id=duplicate.id)
     log.info("unit %s verified by second worker %s", duplicate.verify_of, dup_result.worker_id)
 
 
-def _overturn_original(db: Session, duplicate: WorkUnit, message: str) -> None:
+def _overturn_original(db: Session, duplicate: WorkUnit, disagreer: str,
+                       message: str) -> None:
     """A duplicate failed to reproduce the confirmed original: fail *both*.
 
     The original's result row stays as history (it was accepted), but the
@@ -393,6 +406,8 @@ def _overturn_original(db: Session, duplicate: WorkUnit, message: str) -> None:
         original_result.error = message
     original.status = "failed"
     db.commit()
+    reputation.record(db, disagreer, reputation.VERIFICATION_DISAGREED,
+                      work_unit_id=duplicate.id, detail=message)
     log.info("unit %s DISAGREEMENT -> original and duplicate both failed", original.id)
 
 
@@ -478,3 +493,15 @@ def _as_float(value: object) -> float | None:
 
 class Conflict(Exception):
     """Late/duplicate result for an already-completed unit (maps to HTTP 409)."""
+
+
+def record_disagreement(db: Session, work_unit_id: str, worker_id: str) -> None:
+    """Disagreement evidence for a conflicting late result (409 path).
+
+    Called after rollback by the endpoint: the submitter's value did not
+    reproduce the confirmed one, so the submitter — not the original —
+    earns the mark.
+    """
+    reputation.record(db, worker_id, reputation.VERIFICATION_DISAGREED,
+                      work_unit_id=work_unit_id,
+                      detail="conflicting late result for a completed unit")

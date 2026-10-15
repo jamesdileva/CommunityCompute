@@ -15,6 +15,7 @@ from app.schemas.worker import WorkerOut, WorkerRegistration
 from app.services.availability import effective_status
 from app.services.tiers import hardware_tiers
 from app.services.ws_registry import registry
+from app.services import reputation
 from app.api.deps import authenticate
 
 log = logging.getLogger("coordinator")
@@ -131,3 +132,17 @@ def report_capabilities(
         log.info("capabilities updated id=%s gpus=%d", worker_id, len(payload.gpus))
     db.commit()
     return payload
+
+
+@router.get("/{worker_id}/reputation")
+def worker_reputation(worker_id: str, db: Session = Depends(get_db)) -> dict:
+    """Reliability score + counts + recent conduct history (Sprint 23).
+
+    Read-only operator/diagnostic view — no auth gate in the prototype
+    (same posture as the other GETs); the score is informational until
+    Sprint 31 wires it into scheduling.
+    """
+    try:
+        return reputation.reliability(db, worker_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker"})
