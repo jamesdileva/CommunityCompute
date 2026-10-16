@@ -183,6 +183,19 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # Insufficient balance -> 402 {error, need, have}; no refunds v1 (failed units
 # still cost scheduling). Balance is always SUM(amount) - never stored.
 
+# Customer API (Sprint 29): programmatic compute access at /api/v1 - no dashboard
+# Operator (unauthenticated in prototype, like /auth/enrollment-tokens):
+#   POST /api/v1/customers {name} -> {id, api_key}   (raw key shown once)
+#   GET  /api/v1/customers | /api/v1/keys
+#   POST /api/v1/customers/{id}/rotate-key | /revoke
+# Customer (Authorization: Bearer <api_key>; own jobs only, else 404):
+#   POST /api/v1/jobs {workload_type, params, total_units, chunk_size,
+#                      verify_sample, requirements} -> {id, status,...}
+#   GET  /api/v1/jobs/{id}            -> status + per-unit counts + aggregate
+#   GET  /api/v1/jobs/{id}/results    -> per-unit values/hashes/failure_kind
+#   GET  /api/v1/usage               -> {jobs, units, units_by_status/workload}
+# Free community pool: customer jobs charge no credits (architecture 21).
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

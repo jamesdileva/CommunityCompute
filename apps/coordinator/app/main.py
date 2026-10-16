@@ -22,6 +22,7 @@ from app.api.workers import router as workers_router
 from app.api.work import router as work_router
 from app.api.ws import router as ws_router
 from app.api.api_auth import router as auth_router
+from app.api.customer_api import router as customer_api_router
 from app.api.deps import CaptureBodyMiddleware
 from app.config import get_settings
 from app.db import init_db
@@ -59,6 +60,7 @@ app.include_router(resources_router)
 app.include_router(network_router)
 app.include_router(ws_router)
 app.include_router(auth_router)
+app.include_router(customer_api_router)
 
 
 def _envelope(code: int, message: object) -> dict:

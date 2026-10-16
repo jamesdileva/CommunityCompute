@@ -33,11 +33,15 @@ def unit_count(total_units: int, chunk_size: int) -> int:
     return math.ceil(total_units / chunk_size)
 
 
-def create_job(db: Session, payload: JobCreate) -> tuple[Job, list[WorkUnit]]:
+def create_job(
+    db: Session, payload: JobCreate, *, customer_id: str | None = None
+) -> tuple[Job, list[WorkUnit]]:
     """Create job + all work units atomically. Job params stay immutable.
 
     Sprint 28: a named submitter pays 1 credit per unit upfront (402 when
     short); anonymous submits stay free (backwards compatible open pool).
+    Sprint 29: ``customer_id`` (set by the customer API from the authenticated
+    key, never client-supplied) records ownership for status/result/usage.
     """
     submitter = payload.submitter_worker_id
     if submitter is not None and db.get(Worker, submitter) is None:
@@ -53,6 +57,7 @@ def create_job(db: Session, payload: JobCreate) -> tuple[Job, list[WorkUnit]]:
         verify_sample=payload.verify_sample,
         requirements=payload.requirements.model_dump(exclude_unset=True),
         submitter_worker_id=submitter,
+        customer_id=customer_id,
     )
     units = [
         WorkUnit(

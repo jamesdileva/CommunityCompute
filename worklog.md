@@ -802,3 +802,27 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Next steps:**
 - Sprint 29+: consume credits in the dashboard/payout accounting views.
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-15 - Sprint 29: Customer API Prototype
+**Goal:** Expose compute programmatically so a separate client can use the network without the dashboard (roadmap Sprint 29).
+**Scope (in / out):**
+- In (Full Sprint 29): customer API key auth (its own trust domain), POST /api/v1/jobs, GET /api/v1/jobs/{id}, GET /api/v1/jobs/{id}/results, GET /api/v1/usage, plus operator customer/key management.
+- Out: full customer identity/authorization/isolation, signed workload defs, per-job quotas (Sprint 30); billing/payments (Sprint 28 credits are worker-only; customers run free).
+**Exit condition (verbatim from roadmap):** A separate test client can submit a supported workload without using the dashboard.
+**Changes:**
+- Coordinator: models/customer.py (Customer, CustomerApiKey - hash-only keys, prefix for display), services/customers.py (create/issue_key/verify_key fails closed/rotate/revoke/list/owns_job/usage), schemas/customer.py (CustomerJobRequest separate from JobCreate; response models), api/customer_api.py (router prefix /api/v1; require_customer bearer dependency), Job.customer_id (additive column + db migration), services/jobs.create_job(customer_id=...), main.py router wiring
+- tests: test_customer_api.py (11: key shown once, rotate invalidates old, revoke, 401 without/bad key, worker token rejected as customer key, submit+poll, results+aggregate, cross-customer 404, unknown workload 422, usage rollup, no customer credit charge)
+- quick-reference.md (customer API section), README status
+**Tests run:**
+- full suite both orders -> 444 passed
+- Live (real coordinator + real worker, separate HTTP client): minted customer; no-key/bad-key -> 401; submitted hello_compute (4 units) via /api/v1/jobs; other customer -> 404; worker completed all 4; /results final=10 values [1,2,3,4]; /usage {jobs:1, units:4, completed:4}; no spend row in credit ledger - pass
+**Decisions:**
+- Customer API is a separate trust namespace: keys live in their own table (own hash namespace) and a worker bearer token never authorizes /api/v1 (verified by test).
+- Ownership from the key only: Job.customer_id is set by the API layer, never client-supplied; reading another customer's job returns 404 (no existence leak).
+- Free community pool: customer jobs carry no submitter_worker_id and write no credit spend; usage is recorded, not billed (architecture 21 - no real money in the prototype).
+- Operator customer/key endpoints are unauthenticated in the prototype, consistent with Sprint 20 enrollment-token minting; hardening lands with Sprint 30 customer identity.
+**Next steps:**
+- Sprint 30: customer workload isolation - customer identity, job authorization, signed workload definitions, input/output isolation, per-job quotas.
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).

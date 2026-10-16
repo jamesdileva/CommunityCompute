@@ -48,6 +48,7 @@ _ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("verify_sample", "FLOAT DEFAULT 0.0"),
         ("requirements", "JSON DEFAULT '{}'"),
         ("submitter_worker_id", "VARCHAR(36)"),
+        ("customer_id", "VARCHAR(36)"),
     ],
     "results": [
         ("failure_kind", "VARCHAR(32)"),

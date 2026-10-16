@@ -8,7 +8,7 @@ from app.db import check_database, get_db
 from app.models.worker import Worker
 
 SERVICE = "coordinator"
-VERSION = "0.1.0-sprint28"
+VERSION = "0.1.0-sprint29"
 
 router = APIRouter()
 

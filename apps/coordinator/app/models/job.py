@@ -34,6 +34,8 @@ class Job(Base):
     requirements: Mapped[dict] = mapped_column(JSON, default=dict)
     # Sprint 28: who pays for this job (None = free open-pool job)
     submitter_worker_id: Mapped[str | None] = mapped_column(String(36))
+    # Sprint 29: customer API owner (None = dashboard/operator-submitted job)
+    customer_id: Mapped[str | None] = mapped_column(String(36), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
