@@ -30,7 +30,7 @@ from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
-from app.services import accounting, reputation
+from app.services import accounting, credits, reputation
 from app.services.compat import check
 from app.services.workloads import expected as workload_expected
 from app.services.workloads import output_hash as workload_output_hash
@@ -315,6 +315,12 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
             requires_gpu=bool((job.requirements or {}).get("gpu")) if job else False,
         )
         if unit.verify_of is None:
+            # Sprint 28: originals earn; duplicates/self-dealing do not.
+            credits.earn_verified_unit(
+                db, worker_id=payload.worker_id, job_id=unit.job_id,
+                work_unit_id=work_unit_id,
+                submitter_worker_id=job.submitter_worker_id if job else None,
+            )
             _maybe_spawn_duplicate(db, job, unit)
         else:
             _confirm_original(db, unit, result)

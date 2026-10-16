@@ -781,3 +781,24 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 
 ---
 
+## 2026-10-15 - Sprint 28: Compute Credits
+**Goal:** Non-cash credits that make contribution and consumption accountable (roadmap Sprint 28).
+**Scope (in / out):**
+- In (Full Sprint 28): append-only credit_ledger, earn on verified original completion, spend on job submit, 402 shortfall, per-worker totals + ledger endpoints.
+- Out: cash/payouts, market pricing, resource-weighted rate card, refunds/escrow, credit transfers.
+**Exit condition (verbatim from roadmap):** Contributors earn credits for verified work and spend them to submit jobs.
+**Changes:**
+- Coordinator: models/credit.py (CreditEntry; append-only; reasons earn_verified_unit/spend_job_submit), services/credits.py (balance from SUM, totals, earn_verified_unit, spend_job_submit stages debit, ledger, InsufficientCredits, CREDITS_PER_UNIT=1), work.py hook (earn on verified original; duplicates/self-deals pay 0), jobs.py create_job (checks affordability, stages debit, commits job+units+ledger atomically so a 402 never orphans a job), schemas/job.py + models/job.py + db additive column submitter_worker_id, api/jobs.py 402/404 mapping, api/workers.py GET /workers/{id}/credits, api/network.py GET /credits/ledger
+- tests: test_credits.py (11: earn math, failed earns nothing, self-dealing earns nothing, spend deducts, shortfall 402 with no orphan, unknown submitter 404, anonymous free, ledger audit, balance==ledger SUM, no partial deduction, self-deal writes nothing)
+- quick-reference.md (credits section), README status
+**Tests run:**
+- full suite both orders -> 433 passed
+- Live (real coordinator + real worker on this PC): worker completed 4 open-pool units -> balance 4/earned 4/spent 0; submitter job of 3 -> balance 1/spent 3; job of 5 -> 402 {need:5,have:1} with no job created; /credits/ledger 5 rows; SQLite GROUP BY reason -> earn 4/+4, spend 1/-3, SUM=1 - pass
+**Decisions:**
+- Balance is never stored: it is always SUM(amount) over the append-only ledger; corrections are new rows, never edits.
+- Spend is charged upfront per unit and is not refunded v1 (failed units still cost scheduling); the 402 surface states need/have.
+- Self-dealing (completing a unit on a job you submitted) earns 0 - otherwise a worker could wash-mint credits; the submit still costs, so net is negative.
+- Debit is staged (not committed) by spend_job_submit and committed with the job so a shortfall cannot leave a half-created job.
+**Next steps:**
+- Sprint 29+: consume credits in the dashboard/payout accounting views.
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).

@@ -175,6 +175,14 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 # v1 estimates: cpu = wall time (single-threaded compute); gpu = wall time
 # iff the job required a GPU, else 0. Overturns void records (history kept).
 
+# Compute credits (Sprint 28): earn by contributing, spend by consuming
+# +1 per verified original unit (duplicates/failures/self-deals earn nothing);
+# -1 per unit upfront when a job names submitter_worker_id (absent = free pool).
+# GET /workers/{id}/credits -> {balance, earned, spent}
+# GET /credits/ledger[?worker_id=&limit=] -> [{amount, reason, job_id, unit,...}]
+# Insufficient balance -> 402 {error, need, have}; no refunds v1 (failed units
+# still cost scheduling). Balance is always SUM(amount) - never stored.
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

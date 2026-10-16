@@ -11,6 +11,7 @@ from app.models.job import Job
 from app.schemas.job import JobCreate, JobOut, JobStatusOut, WorkUnitOut
 from app.services import jobs as job_service
 from app.services import work as work_service
+from app.services.credits import InsufficientCredits
 from app.services.explain import explain
 from app.services.ws_registry import registry
 
@@ -21,10 +22,19 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 @router.post("", response_model=JobOut, status_code=201)
 def submit_job(payload: JobCreate, db: Session = Depends(get_db)) -> JobOut:
-    job, units = job_service.create_job(db, payload)
+    try:
+        job, units = job_service.create_job(db, payload)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"error": "unknown submitter worker"})
+    except InsufficientCredits as exc:
+        raise HTTPException(
+            status_code=402,
+            detail={"error": "insufficient credits", "need": exc.need, "have": exc.have},
+        )
     log.info(
-        "job created id=%s type=%s total=%d chunk=%d units=%d",
+        "job created id=%s type=%s total=%d chunk=%d units=%d submitter=%s",
         job.id, job.workload_type, job.total_units, job.chunk_size, len(units),
+        job.submitter_worker_id,
     )
     registry.broadcast_from_thread({"type": "work_available", "job_id": job.id})
     return JobOut.model_validate(job)

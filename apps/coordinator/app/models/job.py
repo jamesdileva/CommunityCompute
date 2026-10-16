@@ -32,6 +32,8 @@ class Job(Base):
     verify_sample: Mapped[float] = mapped_column(Float, default=0.0)
     # Sprint 9: declarative requirements (implementation-guide §10)
     requirements: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Sprint 28: who pays for this job (None = free open-pool job)
+    submitter_worker_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 27 - compute accounting (auditable per-unit contribution ledger).
+**Status:** Sprint 28 - compute credits (earn by contributing, spend by consuming).
 
 ## Core loop (stable abstraction)
 

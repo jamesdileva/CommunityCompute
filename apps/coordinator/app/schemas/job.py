@@ -49,6 +49,8 @@ class JobCreate(BaseModel):
             raise ValueError(f"unknown workload type {value!r} (not allowlisted)")
         return value
     requirements: Requirements = Field(default_factory=Requirements)
+    # Sprint 28: who pays (None = free open-pool job). Must be registered.
+    submitter_worker_id: str | None = Field(default=None, max_length=36)
 
 
 class WorkUnitOut(BaseModel):
@@ -74,6 +76,7 @@ class JobOut(BaseModel):
     status: JobStatus
     verify_sample: float = 0.0
     requirements: dict = Field(default_factory=dict)
+    submitter_worker_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

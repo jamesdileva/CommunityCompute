@@ -161,3 +161,13 @@ def worker_accounting(worker_id: str, db: Session = Depends(get_db)) -> dict:
         return accounting.worker_summary(db, worker_id)
     except KeyError:
         raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+
+
+@router.get("/{worker_id}/credits")
+def worker_credits(worker_id: str, db: Session = Depends(get_db)) -> dict:
+    """Credit balance + earned/spent split (Sprint 28)."""
+    from app.services import credits
+
+    if db.get(Worker, worker_id) is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+    return credits.totals(db, worker_id)

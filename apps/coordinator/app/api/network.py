@@ -189,3 +189,15 @@ def accounting_entries(
         }
         for r in rows
     ]
+
+
+@router.get('/credits/ledger')
+def credits_ledger(
+    worker_id: str | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Credit ledger audit view (Sprint 28): newest first, filterable."""
+    from app.services import credits
+
+    return credits.ledger(db, worker_id=worker_id, limit=limit)

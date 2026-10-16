@@ -12,8 +12,10 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
+from app.models.worker import Worker
 from app.models.work_unit import WorkUnit
 from app.schemas.job import JobCreate
+from app.services import credits
 
 
 def plan_units(total_units: int, chunk_size: int) -> list[tuple[int, int]]:
@@ -32,7 +34,14 @@ def unit_count(total_units: int, chunk_size: int) -> int:
 
 
 def create_job(db: Session, payload: JobCreate) -> tuple[Job, list[WorkUnit]]:
-    """Create job + all work units atomically. Job params stay immutable."""
+    """Create job + all work units atomically. Job params stay immutable.
+
+    Sprint 28: a named submitter pays 1 credit per unit upfront (402 when
+    short); anonymous submits stay free (backwards compatible open pool).
+    """
+    submitter = payload.submitter_worker_id
+    if submitter is not None and db.get(Worker, submitter) is None:
+        raise KeyError("unknown submitter worker")
     job_id = str(uuid.uuid4())
     job = Job(
         id=job_id,
@@ -43,8 +52,8 @@ def create_job(db: Session, payload: JobCreate) -> tuple[Job, list[WorkUnit]]:
         status="queued",
         verify_sample=payload.verify_sample,
         requirements=payload.requirements.model_dump(exclude_unset=True),
+        submitter_worker_id=submitter,
     )
-    db.add(job)
     units = [
         WorkUnit(
             id=str(uuid.uuid4()),
@@ -56,6 +65,12 @@ def create_job(db: Session, payload: JobCreate) -> tuple[Job, list[WorkUnit]]:
         )
         for seq, (start, end) in enumerate(plan_units(job.total_units, job.chunk_size), start=1)
     ]
+    # Stage the debit first (raises 402 before anything is written), then commit
+    # job + units + ledger row in one transaction — no orphaned job on shortfall.
+    if submitter is not None:
+        credits.spend_job_submit(db, worker_id=submitter, job_id=job_id,
+                                 units=len(units))
+    db.add(job)
     db.add_all(units)
     db.commit()
     db.refresh(job)
