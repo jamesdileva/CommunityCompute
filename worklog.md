@@ -853,3 +853,30 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Next steps:**
 - Sprint 31+: surface quotas/usage in the dashboard; workload signing-key management (rotate/separate from the assignment seal); sandbox hardening before any public enrollment.
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-16 - Sprint 31: Scheduling Optimization
+**Goal:** Move beyond FIFO - rank compatible work units with a weighted, explainable scheduling score (roadmap Sprint 31).
+**Scope (in / out):**
+- In: `app/services/scoring.py` (weighted score over architecture §10 inputs), wired into `claim_next_unit` (best score, FIFO tie-break); `SCORING_*` settings; score breakdown added to `GET /jobs/{job_id}/compatibility/{worker_id}`; deterministic benchmark test (scored vs FIFO).
+- Out: worker protocol changes (no location/bandwidth fields - scoring is coordinator-derived only; the location term stays neutral until workers report one); dashboard UI; push/matching scheduler rewrite (still worker-pull).
+**Exit condition (verbatim from roadmap):** The scheduler measurably improves throughput or reduces transfer overhead compared with FIFO.
+**Changes:**
+- Coordinator: services/scoring.py (component functions capability_fit/estimated_speed/cached_model/reliability/availability/transfer_cost/location_penalty; `score`, `worker_context`, `score_with_context`, `rank`), services/work.py `_select_candidate` replaces the Sprint-15 cache-first loop (compat filter first, then score all eligible, FIFO tie-break; SCORING_ENABLED=false -> eligible[0]), api/jobs.py explain now returns a `score` breakdown, api/work.py docstring, config.py SCORING_* weights + references + scoring_enabled
+- Tests: test_scoring.py (15: component unit tests, rank tie-break, explain breakdown, claim prefers cached-model unit, SCORING_ENABLED=false falls back to FIFO, incompatible worker neither scores nor claims, and the FIFO-vs-scored transfer benchmark)
+- quick-reference.md (scheduling score section), README status
+**Tests run:**
+- full suite both orders -> 483 passed
+- Live (real coordinator + real worker): worker with model m1 cached; submitted plain (older) then model (newer) job; explain plain total=1.750/cached 0.0 vs model total=3.750/cached 1.0/transfer 0.0; claim returned the *newer model* job (scoring beat FIFO); real worker completed a job end-to-end under the scored scheduler - pass
+- Benchmark (deterministic, in test_scoring.py): 4 workers (1 model-cached) + 6 units (3 needing m1) -> FIFO transfers 3 model downloads, scoring 1, same makespan
+**Decisions:**
+- Worker-pull preserved: the score orders the units *this* worker is compatible with; worker-level terms (speed/reliability/availability) are constant within one claim, so the per-unit discriminators are capability fit, cached model, and transfer cost (documented in the module).
+- Compatibility still gates first (compat.check unchanged); scoring never sends work to an incompatible worker, only orders eligible units.
+- FIFO (`created_at, sequence`) is the tie-break so equal scores reproduce the Sprint-9 behaviour exactly, and `SCORING_ENABLED=false` restores plain FIFO - a live A/B lever.
+- Coordinator-derived inputs only: no worker protocol/schema change. The worker-reported `cached_models` plus reputation/accounting (already stored) supply every term; the `location` term is future-ready but neutral.
+- Weights are settings with deliberately simple prototype defaults (architecture §10 "do not over-engineer scoring during the two-node prototype"); the model is pure and unit-tested.
+**Next steps:**
+- Sprint 32: large-scale simulation - simulated workers (100 -> 1,000,000) to stress scheduler + DB/queue; reuse scoring for worker-selection measurement.
+- Surface scheduling score/weights in the dashboard; let operators tune weights safely.
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).

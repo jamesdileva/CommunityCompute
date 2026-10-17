@@ -23,9 +23,9 @@ def claim_work(worker_id: str, body: ClaimRequest | None = None,
                _authed: str | None = Depends(authenticate)) -> dict:
     """Expire stale leases, then claim the best queued unit ({} when idle).
 
-    Units whose declared model is already cached on this worker are
-    preferred (stable FIFO within each group) — a preference, not a gate:
-    uncached claims still get served.
+    The scheduler scores every unit this worker is compatible with (Sprint 31:
+    capability fit, cached model, transfer cost, reliability/availability) and
+    returns the best, FIFO tie-broken. Set `SCORING_ENABLED=false` for FIFO.
     """
     cached = set(body.cached_models) if body else set()
     try:

@@ -8,8 +8,9 @@ WORKLOAD_SIGNING_KEY.
 
 from functools import lru_cache
 
-from packages.protocol.signing import DEV_SIGNING_KEY
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from packages.protocol.signing import DEV_SIGNING_KEY
 
 
 class Settings(BaseSettings):
@@ -39,6 +40,22 @@ class Settings(BaseSettings):
     customer_max_units_per_job: int = 1000
     customer_max_in_flight_jobs: int = 5
     customer_max_units_in_flight: int = 2000
+    # Sprint 31 (scheduling optimization): weighted score over compatible
+    # candidates (architecture §10). `scoring_enabled=False` restores plain
+    # FIFO (the A/B baseline). Weights are prototype defaults; the reference
+    # values give the normalizers sensible midpoints.
+    scoring_enabled: bool = True
+    scoring_weight_capability: float = 1.0
+    scoring_weight_speed: float = 1.0
+    scoring_weight_cache: float = 2.0
+    scoring_weight_reliability: float = 1.5
+    scoring_weight_availability: float = 0.5
+    scoring_weight_transfer: float = 1.5
+    scoring_weight_location: float = 1.0
+    scoring_reference_ms: float = 50.0
+    scoring_reference_transfer_bytes: int = 50_000_000
+    scoring_bytes_per_range_unit: int = 4
+    scoring_model_default_mb: int = 256
 
 
 @lru_cache

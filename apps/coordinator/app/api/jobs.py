@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.capability import WorkerCapability
 from app.models.job import Job
+from app.models.work_unit import WorkUnit
 from app.schemas.job import JobCreate, JobOut, JobStatusOut, WorkUnitOut
 from app.services import jobs as job_service
+from app.services import scoring
 from app.services import work as work_service
 from app.services.credits import InsufficientCredits
 from app.services.explain import explain
@@ -47,14 +49,27 @@ def list_jobs(db: Session = Depends(get_db)) -> list[JobOut]:
 
 @router.get("/{job_id}/compatibility/{worker_id}")
 def job_compatibility(job_id: str, worker_id: str, db: Session = Depends(get_db)) -> dict:
-    """Explain why this job's requirements do/don't fit this worker (Sprint 10)."""
+    """Explain fit (Sprint 10) + scheduling score breakdown (Sprint 31)."""
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail={"error": "unknown job"})
     cap = db.get(WorkerCapability, worker_id)
     if cap is None:
         raise HTTPException(status_code=404, detail={"error": "unknown worker (no capabilities)"})
-    return explain(job.requirements, cap.profile)
+    payload = explain(job.requirements, cap.profile)
+    if payload["compatible"]:
+        # Score a representative unit of this job so operators can see *why*
+        # the scheduler would prefer this worker over another (Sprint 31).
+        unit = (
+            db.query(WorkUnit).filter_by(job_id=job_id)
+            .order_by(WorkUnit.sequence).first()
+        )
+        start, end = (unit.range_start, unit.range_end) if unit else (1, job.chunk_size or 1)
+        context = scoring.worker_context(db, worker_id)
+        payload["score"] = scoring.score_with_context(
+            context, requirements=job.requirements, range_start=start, range_end=end
+        )
+    return payload
 
 
 @router.get("/{job_id}", response_model=JobStatusOut)

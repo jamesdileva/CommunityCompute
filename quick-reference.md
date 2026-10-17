@@ -243,8 +243,20 @@ print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type': 'embedding
 
 # Worker tiers + compatibility explanations (Sprint 10)
 # GET /workers/{id}                    -> tiers {gpu, cpu, ram} = H1/H2/H3 or unknown
-# GET /jobs/{id}/compatibility/{wid}   -> {compatible, reason, checks:[{dimension,need,have,passed}]}
+# GET /jobs/{id}/compatibility/{wid}   -> {compatible, reason, checks:[...], score:{...}}
 python -c "import httpx; print(httpx.get('http://127.0.0.1:8000/workers/<wid>', timeout=5).json()['tiers'])"
+
+# Scheduling score (Sprint 31): among *compatible* units, the worker claims the
+# highest score; FIFO (created_at, sequence) breaks ties. Set SCORING_ENABLED=false
+# for plain FIFO. Components (architecture §10), each in the /compatibility score:
+#   + capability_fit  (headroom on the axes the job needs)
+#   + estimated_speed (1/(1+historical_ms/ref) for this worker)
+#   + cached_model    (1 when the job's model is already local)
+#   + reliability     (reputation; unrated -> neutral 0.5)
+#   + availability    (idle load x lease headroom)
+#   - transfer_cost   (payload + uncached model bytes, normalized)
+#   - location_penalty(0 unless job.location and worker.location disagree)
+# Weights/refs are SCORING_WEIGHT_* / SCORING_REFERENCE_* settings.
 
 # Hardware tiers (per resource axis, architecture §5)
 #   GPU  : <=4GB or integrated/undetected -> H1 · 4-12GB -> H2 · >12GB -> H3 (best GPU wins)

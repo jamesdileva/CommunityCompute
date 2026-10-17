@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 30 - customer workload isolation (per-customer quotas, signed workload definitions, tenant-scoped jobs at `/api/v1`).
+**Status:** Sprint 31 - scheduling optimization (weighted score: capability fit, cached model, estimated speed, reliability, availability, transfer cost; FIFO tie-break).
 
 ## Core loop (stable abstraction)
 

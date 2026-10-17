@@ -21,8 +21,6 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from packages.protocol import PROTOCOL_VERSION
-
 from app.config import get_settings
 from app.models.attempt import WorkUnitAttempt
 from app.models.job import Job
@@ -30,12 +28,13 @@ from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
-from app.services import accounting, credits, reputation
+from app.services import accounting, credits, reputation, scoring
 from app.services.compat import check
 from app.services.workloads import definition as workload_definition
 from app.services.workloads import expected as workload_expected
 from app.services.workloads import output_hash as workload_output_hash
 from app.services.workloads import signed_manifest as workload_signed_manifest
+from packages.protocol import PROTOCOL_VERSION
 
 log = logging.getLogger("coordinator")
 
@@ -53,9 +52,11 @@ def claim_next_unit(db: Session, worker_id: str,
                     cached_models: set[str] | None = None) -> WorkAssignment | None:
     """Expire stale leases (lazy sweep), then claim the best queued unit.
 
-    Ordering (Sprint 15): model-cached units first (stable FIFO within each
-    group), then everything else — cache affinity is a preference, so
-    uncached workers are still served plain units.
+    Ordering (Sprint 31): among the units this worker is *compatible* with,
+    pick the highest scheduling score (fitting capability, cached model, low
+    transfer, reliability/availability), with FIFO (`created_at, sequence`)
+    as the tie-break. Supersedes the Sprint-15 ad-hoc cache-first branch; set
+    `SCORING_ENABLED=false` to fall back to plain FIFO.
     Also enforces: duplicates skip the original's worker; the worker's
     stored capability profile must satisfy the job's requirements (S9);
     beta guardrails (Sprint 26): outdated versions and lease hoarding.
@@ -89,22 +90,7 @@ def claim_next_unit(db: Session, worker_id: str,
     )
     profile = _worker_profile(db, worker_id)
     cached = cached_models or set()
-    fallback: WorkUnit | None = None
-    for candidate in candidates:
-        if candidate.verify_of is not None and _original_worker(db, candidate) == worker_id:
-            continue  # verification must come from a different worker
-        job = db.get(Job, candidate.job_id)
-        reqs = (job.requirements or {}) if job else {}
-        model_req = reqs.get("model")
-        if model_req and model_req in cached:
-            if _compatible(reqs, profile, candidate.id, worker_id):
-                unit = candidate
-                break
-            continue
-        if fallback is None and _compatible(reqs, profile, candidate.id, worker_id):
-            fallback = candidate
-    else:
-        unit = fallback
+    unit = _select_candidate(db, worker_id, candidates, profile, cached, active)
     if unit is None:
         return None
     job = db.get(Job, unit.job_id)
@@ -188,6 +174,42 @@ def _compatible(reqs: dict, profile: dict | None, unit_id: str, worker_id: str) 
     if not compatible:
         log.debug("unit %s skipped for %s: %s", unit_id, worker_id, reason)
     return compatible
+
+
+def _select_candidate(db: Session, worker_id: str, candidates: list[WorkUnit],
+                      profile: dict | None, cached: set[str],
+                      active_leases: int) -> WorkUnit | None:
+    """Pick the best compatible queued unit (Sprint 31 scoring; FIFO tie-break).
+
+    Compatibility still gates first (compat.check): scoring only orders the
+    units this worker is allowed to run. When scoring is disabled the first
+    eligible unit wins — plain FIFO, the A/B baseline.
+    """
+    eligible: list[tuple[WorkUnit, dict]] = []
+    for candidate in candidates:
+        if candidate.verify_of is not None and _original_worker(db, candidate) == worker_id:
+            continue  # verification must come from a different worker
+        job = db.get(Job, candidate.job_id)
+        reqs = (job.requirements or {}) if job else {}
+        if _compatible(reqs, profile, candidate.id, worker_id):
+            eligible.append((candidate, reqs))
+    if not eligible:
+        return None
+    settings = get_settings()
+    if not settings.scoring_enabled:
+        return eligible[0][0]  # candidates are already in FIFO order
+    context = scoring.worker_context(db, worker_id, settings)
+    context["active_leases"] = active_leases  # reuse the count already computed
+    entries = []
+    for candidate, reqs in eligible:
+        result = scoring.score_with_context(
+            context, requirements=reqs,
+            range_start=candidate.range_start, range_end=candidate.range_end,
+            cached_models=cached, settings=settings,
+        )
+        entries.append((result["total"], candidate.created_at,
+                        candidate.sequence, candidate))
+    return scoring.rank(entries)[0][3]
 
 
 def _version_before(have: str, minimum: str) -> bool:
