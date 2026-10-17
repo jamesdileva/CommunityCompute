@@ -22,8 +22,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import extract_bearer
+from app.config import get_settings
 from app.db import get_db
 from app.models.customer import Customer
+from app.models.job import Job
 from app.models.result import Result
 from app.schemas.customer import (
     CustomerCreate,
@@ -34,14 +36,22 @@ from app.schemas.customer import (
     JobAccepted,
     JobResultsOut,
     JobResultUnit,
+    JobSummary,
+    MeOut,
+    QuotaOut,
     RevokeCustomerResponse,
     RotateKeyResponse,
     UsageOut,
+    WorkloadManifestOut,
 )
 from app.schemas.job import JobCreate, JobStatusOut, WorkUnitOut
 from app.services import customers as customer_service
+from app.services import isolation, quotas
 from app.services import jobs as job_service
 from app.services import work as work_service
+from app.services import workloads as workload_service
+from app.services.isolation import AccessDenied
+from app.services.quotas import QuotaExceeded
 from app.services.ws_registry import registry
 
 log = logging.getLogger("coordinator")
@@ -110,7 +120,38 @@ def revoke_customer(customer_id: str, db: Session = Depends(get_db)) -> RevokeCu
     return RevokeCustomerResponse(customer_id=customer_id, revoked=count, status="revoked")
 
 
+# ---- customer: identity + discovery ------------------------------------------
+
+
+@router.get("/me", response_model=MeOut)
+def me(customer: Customer = Depends(require_customer)) -> MeOut:
+    """Identity of the authenticated customer (Sprint 30)."""
+    return MeOut(customer_id=customer.id, name=customer.name, status=customer.status)
+
+
+@router.get("/workloads", response_model=list[WorkloadManifestOut])
+def workloads(
+    customer: Customer = Depends(require_customer),
+    db: Session = Depends(get_db),
+) -> list[WorkloadManifestOut]:
+    """Signed workload definitions this network runs (Sprint 30)."""
+    settings = get_settings()
+    manifests = []
+    for workload_type in sorted(workload_service.KNOWN_WORKLOAD_TYPES):
+        manifest = workload_service.signed_manifest(
+            workload_type, settings.workload_signing_key
+        )
+        if manifest is not None:
+            manifests.append(WorkloadManifestOut(**manifest))
+    return manifests
+
+
 # ---- customer: jobs + usage --------------------------------------------------
+
+
+def _not_found() -> HTTPException:
+    # 404 (not 403): a foreign job's existence must not leak.
+    return HTTPException(status_code=404, detail={"error": "unknown job"})
 
 
 @router.post("/jobs", response_model=JobAccepted, status_code=201)
@@ -120,6 +161,14 @@ def submit_job(
     db: Session = Depends(get_db),
 ) -> JobAccepted:
     """Submit a job for this customer (free community pool — no credits charged)."""
+    try:
+        quotas.check_submit(db, customer.id, payload.total_units)
+    except QuotaExceeded as exc:
+        code = 413 if exc.scope == "units_per_job" else 429
+        raise HTTPException(status_code=code, detail={
+            "error": "quota exceeded", "scope": exc.scope,
+            "limit": exc.limit, "current": exc.current, "requested": exc.requested,
+        })
     job, units = job_service.create_job(
         db,
         JobCreate(
@@ -139,16 +188,36 @@ def submit_job(
                        total_units=job.total_units)
 
 
+@router.get("/jobs", response_model=list[JobSummary])
+def list_jobs(
+    customer: Customer = Depends(require_customer), db: Session = Depends(get_db)
+) -> list[JobSummary]:
+    """Jobs owned by this customer only (Sprint 30 job authorization)."""
+    rows = (
+        db.query(Job)
+        .filter_by(customer_id=customer.id)
+        .order_by(Job.created_at.desc())
+        .all()
+    )
+    return [
+        JobSummary(id=j.id, workload_type=j.workload_type, status=j.status,
+                   total_units=j.total_units, created_at=j.created_at)
+        for j in rows
+    ]
+
+
 @router.get("/jobs/{job_id}", response_model=JobStatusOut)
 def job_status(
     job_id: str,
     customer: Customer = Depends(require_customer),
     db: Session = Depends(get_db),
 ) -> JobStatusOut:
-    if customer_service.owns_job(db, customer.id, job_id) is None:
-        raise HTTPException(status_code=404, detail={"error": "unknown job"})
+    try:
+        isolation.authorize_job(db, customer, job_id)
+    except AccessDenied:
+        raise _not_found()
     data = job_service.job_status(db, job_id)
-    assert data is not None  # ownership already confirmed it exists
+    assert data is not None  # authorization already confirmed it exists
     return JobStatusOut(
         id=data.job.id,
         workload_type=data.job.workload_type,
@@ -172,9 +241,11 @@ def job_results(
     customer: Customer = Depends(require_customer),
     db: Session = Depends(get_db),
 ) -> JobResultsOut:
-    """Per-unit results + aggregate for a job this customer owns."""
-    if customer_service.owns_job(db, customer.id, job_id) is None:
-        raise HTTPException(status_code=404, detail={"error": "unknown job"})
+    """Per-unit results + aggregate for a job this customer owns (output isolation)."""
+    try:
+        isolation.authorize_job(db, customer, job_id)
+    except AccessDenied:
+        raise _not_found()
     data = job_service.job_status(db, job_id)
     assert data is not None
     results: list[JobResultUnit] = []
@@ -211,3 +282,11 @@ def usage(
 ) -> UsageOut:
     """Read-only usage accounting for the authenticated customer."""
     return UsageOut(**customer_service.usage(db, customer.id))
+
+
+@router.get("/quota", response_model=QuotaOut)
+def quota(
+    customer: Customer = Depends(require_customer), db: Session = Depends(get_db)
+) -> QuotaOut:
+    """Effective per-customer caps + current usage (Sprint 30)."""
+    return QuotaOut(**quotas.limits(), **quotas.usage(db, customer.id))

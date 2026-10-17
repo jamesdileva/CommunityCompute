@@ -6,6 +6,11 @@ behind this registry so the verification path stays generic.
 """
 
 from app.services.workloads import embeddings, hello_compute, stats_range
+from packages.protocol.workloads import (
+    WorkloadDefinition,
+    definition_for,
+    sign_definition,
+)
 
 # Sprint 21 allowlist: the only workload types this coordinator will run.
 # Both submit-time validation and verification dispatch consult this set —
@@ -15,6 +20,26 @@ KNOWN_WORKLOAD_TYPES = frozenset({"hello_compute", "stats_range", "embeddings"})
 
 def is_known_workload(workload_type: str) -> bool:
     return workload_type in KNOWN_WORKLOAD_TYPES
+
+
+def definition(workload_type: str) -> WorkloadDefinition | None:
+    """The signed workload definition for a type (Sprint 30)."""
+    return definition_for(workload_type)
+
+
+def workload_version(workload_type: str) -> str:
+    """Version of the pinned workload definition, or "" for unknown types."""
+    defn = definition_for(workload_type)
+    return defn.version if defn else ""
+
+
+def signed_manifest(workload_type: str, key: str) -> dict | None:
+    """The definition manifest + its signature, ready to serve (Sprint 30)."""
+    defn = definition_for(workload_type)
+    if defn is None:
+        return None
+    manifest = defn.to_manifest()
+    return {**manifest, "signature": sign_definition(manifest, key)}
 
 
 def expected(workload_type: str, op: str, range_start: int, range_end: int,

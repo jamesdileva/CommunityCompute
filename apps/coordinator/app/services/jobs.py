@@ -16,6 +16,8 @@ from app.models.worker import Worker
 from app.models.work_unit import WorkUnit
 from app.schemas.job import JobCreate
 from app.services import credits
+from app.services.isolation import scope_for_customer
+from app.services.workloads import workload_version
 
 
 def plan_units(total_units: int, chunk_size: int) -> list[tuple[int, int]]:
@@ -58,6 +60,8 @@ def create_job(
         requirements=payload.requirements.model_dump(exclude_unset=True),
         submitter_worker_id=submitter,
         customer_id=customer_id,
+        workload_version=workload_version(payload.workload_type),
+        isolation_scope=scope_for_customer(customer_id),
     )
     units = [
         WorkUnit(

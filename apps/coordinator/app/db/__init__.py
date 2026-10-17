@@ -49,6 +49,8 @@ _ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("requirements", "JSON DEFAULT '{}'"),
         ("submitter_worker_id", "VARCHAR(36)"),
         ("customer_id", "VARCHAR(36)"),
+        ("workload_version", "VARCHAR(16)"),
+        ("isolation_scope", "VARCHAR(64)"),
     ],
     "results": [
         ("failure_kind", "VARCHAR(32)"),

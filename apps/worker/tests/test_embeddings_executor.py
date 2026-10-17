@@ -8,6 +8,7 @@ from worker.execution.embeddings.embedder import (
 from worker.execution.embeddings.executor import EmbeddingsExecutor
 from worker.execution.registry import executor_for, run_unit, supported_runtimes
 from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+from packages.protocol.workloads import attach_signed_definition
 
 ASSIGN = {
     "protocol_version": "0.1.0-sprint6",
@@ -21,8 +22,9 @@ ASSIGN = {
 
 
 def signed(assignment: dict) -> dict:
-    """Attach a valid coordinator seal (Sprint 21: run_unit verifies it)."""
-    return {**assignment, "manifest_signature": sign_manifest(assignment, DEV_SIGNING_KEY)}
+    """Attach a valid coordinator seal + signed definition (Sprints 21/30)."""
+    sealed = {**assignment, "manifest_signature": sign_manifest(assignment, DEV_SIGNING_KEY)}
+    return attach_signed_definition(sealed, DEV_SIGNING_KEY)
 
 
 def test_corpus_is_deterministic():

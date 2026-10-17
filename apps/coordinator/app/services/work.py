@@ -32,8 +32,10 @@ from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
 from app.services import accounting, credits, reputation
 from app.services.compat import check
+from app.services.workloads import definition as workload_definition
 from app.services.workloads import expected as workload_expected
 from app.services.workloads import output_hash as workload_output_hash
+from app.services.workloads import signed_manifest as workload_signed_manifest
 
 log = logging.getLogger("coordinator")
 
@@ -137,23 +139,29 @@ def claim_next_unit(db: Session, worker_id: str,
         "unit %s leased to %s (attempt %d, expires %s)",
         unit.id, worker_id, attempt_number, unit.lease_expires_at,
     )
+    workload_type = job.workload_type if job else DEFAULT_WORKLOAD_TYPE
+    params = dict(job.params) if job and isinstance(job.params, dict) else {}
+    definition = workload_definition(workload_type)
+    signed_definition = workload_signed_manifest(
+        workload_type, get_settings().workload_signing_key
+    )
     return WorkAssignment(
         protocol_version=PROTOCOL_VERSION,
         work_unit_id=unit.id,
         job_id=unit.job_id,
-        workload_type=job.workload_type if job else DEFAULT_WORKLOAD_TYPE,
+        workload_type=workload_type,
         range_start=unit.range_start,
         range_end=unit.range_end,
-        params=dict(job.params) if job and isinstance(job.params, dict) else {},
+        params=params,
         lease_id=lease_id,
         lease_expires_at=unit.lease_expires_at,
         attempt_number=attempt_number,
         manifest_signature=_sign_assignment(
-            unit.id, unit.job_id,
-            job.workload_type if job else DEFAULT_WORKLOAD_TYPE,
-            unit.range_start, unit.range_end,
-            dict(job.params) if job and isinstance(job.params, dict) else {},
+            unit.id, unit.job_id, workload_type,
+            unit.range_start, unit.range_end, params,
         ),
+        workload_version=(definition.version if definition else None),
+        workload_signature=(signed_definition or {}).get("signature"),
     )
 
 

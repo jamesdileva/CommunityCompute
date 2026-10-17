@@ -26,6 +26,46 @@ class CustomerCreated(BaseModel):
     api_key: str
 
 
+class MeOut(BaseModel):
+    """Identity of the authenticated customer (Sprint 30)."""
+
+    customer_id: str
+    name: str
+    status: str
+
+
+class JobSummary(BaseModel):
+    """Customer-owned job listing row (Sprint 30)."""
+
+    id: str
+    workload_type: str
+    status: str
+    total_units: int
+    created_at: object = None
+
+
+class WorkloadManifestOut(BaseModel):
+    """A signed workload definition (Sprint 30) served for discovery."""
+
+    name: str
+    version: str
+    description: str = ""
+    params: dict = Field(default_factory=dict)
+    requirements: dict = Field(default_factory=dict)
+    deterministic: bool = True
+    signature: str
+
+
+class QuotaOut(BaseModel):
+    """Effective per-customer caps + current usage (Sprint 30)."""
+
+    max_units_per_job: int
+    max_in_flight_jobs: int
+    max_units_in_flight: int
+    in_flight_jobs: int
+    units_in_flight: int
+
+
 class CustomerOut(BaseModel):
     id: str
     name: str

@@ -19,6 +19,7 @@ import tempfile
 import threading
 
 from packages.protocol.signing import verify_manifest
+from packages.protocol.workloads import definition_for, verify_definition
 
 from worker.execution.embeddings.executor import EmbeddingsExecutor
 from worker.execution.executor import UnitResult, WorkloadExecutor
@@ -85,6 +86,26 @@ def run_unit(
             status="failed",
             error="refused: manifest signature missing or invalid",
         )
+    # Sprint 30: verify the signed workload definition. For every catalog
+    # workload the worker re-derives its *local* definition and refuses a
+    # version mismatch or a signature that doesn't match — a divergent
+    # workload contract never executes. (Non-catalog types fall through to the
+    # registry allowlist above; a real coordinator only ever sends catalog types.)
+    definition = definition_for(assignment.get("workload_type", ""))
+    if definition is not None:
+        if assignment.get("workload_version") != definition.version:
+            return UnitResult(
+                status="failed",
+                error=f"refused: workload version mismatch "
+                      f"(assignment={assignment.get('workload_version')!r}, "
+                      f"local={definition.version!r})",
+            )
+        if not verify_definition(definition.to_manifest(),
+                                 assignment.get("workload_signature"), signing_key()):
+            return UnitResult(
+                status="failed",
+                error="refused: workload definition signature missing or invalid",
+            )
     if sandboxed:
         return _run_sandboxed(assignment, work_root=work_root,
                               time_limit=time_limit)

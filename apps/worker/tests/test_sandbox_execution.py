@@ -3,6 +3,7 @@
 import pytest
 
 from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+from packages.protocol.workloads import attach_signed_definition
 from worker.execution.registry import run_unit
 from worker.sandbox import native, sandbox
 
@@ -20,7 +21,7 @@ BASE = {
 def sealed(assignment: dict | None = None) -> dict:
     base = dict(BASE if assignment is None else assignment)
     base["manifest_signature"] = sign_manifest(base, DEV_SIGNING_KEY)
-    return base
+    return attach_signed_definition(base, DEV_SIGNING_KEY)
 
 
 requires_sandbox = pytest.mark.skipif(

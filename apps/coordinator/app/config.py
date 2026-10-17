@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # worker default so LAN prototypes work; ANY production use needs a real
     # secret here (startup warns loudly when the default is in effect).
     workload_signing_key: str = DEV_SIGNING_KEY
+    # Sprint 30 (per-customer quotas, enforced at POST /api/v1/jobs):
+    # max units one job may request, max concurrent in-flight jobs, and max
+    # units in flight across all of a customer's jobs.
+    customer_max_units_per_job: int = 1000
+    customer_max_in_flight_jobs: int = 5
+    customer_max_units_in_flight: int = 2000
 
 
 @lru_cache

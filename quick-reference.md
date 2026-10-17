@@ -196,6 +196,17 @@ python apps/worker/worker/main.py --coordinator-url http://127.0.0.1:8000 --loop
 #   GET  /api/v1/usage               -> {jobs, units, units_by_status/workload}
 # Free community pool: customer jobs charge no credits (architecture 21).
 
+# Customer isolation + quotas (Sprint 30)
+#   GET /api/v1/me                     -> {customer_id, name, status}
+#   GET /api/v1/jobs                   -> own jobs only (JobSummary[])
+#   GET /api/v1/workloads              -> signed workload manifests (catalog)
+#   GET /api/v1/quota                  -> caps + live usage
+# Per-customer caps (env CUSTOMER_MAX_UNITS_PER_JOB / _IN_FLIGHT_JOBS /
+# _UNITS_IN_FLIGHT) enforced at POST /api/v1/jobs: over units-per-job -> 413,
+# over in-flight jobs/units -> 429. Jobs record workload_version + isolation_scope;
+# every assignment carries a signed workload definition the worker re-verifies
+# (fail closed on version mismatch / bad signature). Cross-tenant reads -> 404.
+
 # Two workload types through the same scheduler (Sprint 13; no branching)
 python -c @"
 import httpx

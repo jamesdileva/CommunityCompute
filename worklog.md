@@ -826,3 +826,30 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Next steps:**
 - Sprint 30: customer workload isolation - customer identity, job authorization, signed workload definitions, input/output isolation, per-job quotas.
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-16 - Sprint 30: Customer Workload Isolation
+**Goal:** Make each customer a true tenant - own jobs, own results, bounded resources, and a workload contract the worker can independently verify (roadmap Sprint 30).
+**Scope (in / out):**
+- In: GET /api/v1/me, GET /api/v1/jobs (own only), GET /api/v1/workloads (signed), GET /api/v1/quota; per-customer submit quotas; job authorization via an isolation service; signed workload definitions carried on every assignment and re-verified by the worker; job records workload_version + isolation_scope.
+- Out: on-disk per-tenant namespaces (isolation at the API/DB boundary; per-unit temp dirs unchanged), billing/payments, execution budgets, multi-tenant secrets/key rotation of workload signing keys.
+**Exit condition (verbatim from roadmap):** Customer A cannot access Customer B's workload or data.
+**Changes:**
+- packages/protocol/workloads.py (WorkloadDefinition, WORKLOAD_CATALOG hello_compute/stats_range/embeddings v1, definition_for, canonical_definition, sign_definition, verify_definition, attach_signed_definition); test_workloads.py (sign/verify roundtrip, tamper, order-independent canonicalization, no-op for unknown types)
+- Coordinator: services/isolation.py (scopes, job_scope, authorize_job, AccessDenied), services/quotas.py (limits/usage/in_flight/check_submit, QuotaExceeded), config.py (CUSTOMER_MAX_UNITS_PER_JOB/IN_FLIGHT_JOBS/UNITS_IN_FLIGHT), models/job.py + db additive columns workload_version/isolation_scope, services/workloads/__init__.py (definition/workload_version/signed_manifest), services/jobs.create_job pins version+scope, schemas/work.py WorkAssignment + workload_version/workload_signature, services/work.py signs the assignment definition, schemas/customer.py (MeOut/JobSummary/WorkloadManifestOut/QuotaOut), api/customer_api.py (me, jobs list, workloads, quota, quota enforcement 413/429, authorize_job on status/results)
+- Worker: execution/registry.py re-derives the local definition for catalog types and fails closed on version mismatch / bad definition signature (non-catalog types still gated by the registry allowlist); worker tests updated to attach signed definitions
+- Tests: test_isolation.py (9: me, suspended key 401, signed manifests verify, pinned version/scope, A-cannot-read-B job+results 404, listing scoped, results never leak, operator job invisible), test_quotas.py (5: units-per-job 413, in-flight-jobs 429, units-in-flight 429, per-customer independence, /quota limits+usage), test_workload_definition.py (5: valid executes, version mismatch refused, missing/bad signature refused, non-catalog allowlisted)
+- quick-reference.md (isolation+quota section), README status
+**Tests run:**
+- full suite both orders -> 468 passed
+- Live (real coordinator + real worker, separate HTTP client; caps per_job=2/in_flight_jobs=5/units_in_flight=3): GET /me; GET /workloads signed manifests verified against local catalog; 3-unit submit -> 413 units_per_job; 2-unit job ran to completion (final=3, values [1,2]); B -> 404 on A's job+results and empty job list; second 2-unit submit -> 429 units_in_flight; GET /quota caps+usage consistent - pass
+**Decisions:**
+- Signed definitions are a separate field on the assignment (workload_version + workload_signature); the Sprint 21 manifest seal and protocol version are untouched, so no protocol break.
+- Quotas are coordinator-side and enforced at submit only (413 for units-per-job, 429 for in-flight jobs/units); no execution-time budgets in the prototype.
+- Input/output isolation is at the API+DB boundary (tenant-scoped queries + authorize_job -> 404 on foreign jobs); per-unit temp work dirs already isolate on disk, so no per-tenant path namespaces yet.
+- Worker re-derives its own definition rather than trusting the coordinator's: a divergent contract version or signature never executes (fail closed).
+- Foreign-job access returns 404, not 403, so job existence does not leak across tenants.
+**Next steps:**
+- Sprint 31+: surface quotas/usage in the dashboard; workload signing-key management (rotate/separate from the assignment seal); sandbox hardening before any public enrollment.
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).

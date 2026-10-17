@@ -36,6 +36,11 @@ class Job(Base):
     submitter_worker_id: Mapped[str | None] = mapped_column(String(36))
     # Sprint 29: customer API owner (None = dashboard/operator-submitted job)
     customer_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    # Sprint 30: signed workload-definition version this job runs against
+    workload_version: Mapped[str | None] = mapped_column(String(16))
+    # Sprint 30: tenant boundary ("customer:<id>" or "operator"); the single
+    # scope every input/output access check consults.
+    isolation_scope: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

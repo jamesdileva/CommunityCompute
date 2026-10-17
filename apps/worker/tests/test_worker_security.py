@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+from packages.protocol.workloads import attach_signed_definition
 from worker.execution.hello_compute import HelloComputeExecutor
 from worker.execution.registry import DEFAULT_UNIT_TIME_LIMIT, run_unit
 from worker.security.paths import PathEscapeError, safe_join
@@ -25,7 +26,7 @@ SEALED = {
 def sealed(assignment: dict | None = None, key: str = DEV_SIGNING_KEY) -> dict:
     base = dict(SEALED if assignment is None else assignment)
     base["manifest_signature"] = sign_manifest(base, key)
-    return base
+    return attach_signed_definition(base, key)
 
 
 def test_missing_signature_refused_without_executing():

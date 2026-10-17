@@ -10,11 +10,13 @@ from worker.models.manifest import manifest_for
 MANIFEST = manifest_for("embeddings")
 
 from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+from packages.protocol.workloads import attach_signed_definition
 
 
 def signed(assignment: dict) -> dict:
-    """Attach a valid coordinator seal (Sprint 21: run_unit verifies it)."""
-    return {**assignment, 'manifest_signature': sign_manifest(assignment, DEV_SIGNING_KEY)}
+    """Attach a valid coordinator seal + signed definition (Sprints 21/30)."""
+    sealed = {**assignment, 'manifest_signature': sign_manifest(assignment, DEV_SIGNING_KEY)}
+    return attach_signed_definition(sealed, DEV_SIGNING_KEY)
 
 
 

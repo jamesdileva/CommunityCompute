@@ -23,6 +23,10 @@ class WorkAssignment(BaseModel):
     # Sprint 21: HMAC seal over the unit identity + inputs. The worker
     # verifies before executing and refuses on mismatch.
     manifest_signature: str | None = None
+    # Sprint 30: signed workload definition (version + HMAC over the manifest).
+    # The worker re-derives its local definition and refuses on divergence.
+    workload_version: str | None = None
+    workload_signature: str | None = None
 
 
 class WorkResult(BaseModel):

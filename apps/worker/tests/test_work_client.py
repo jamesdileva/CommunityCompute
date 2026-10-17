@@ -70,12 +70,14 @@ def test_submit_result_409_is_handled(monkeypatch):
 def test_work_cycle_executes_and_submits(monkeypatch):
     """Loop tick: claim → execute (known answer) → submit verified payload."""
     from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+    from packages.protocol.workloads import attach_signed_definition
 
     submitted: list[dict] = []
     assignment = {"protocol_version": "0.1.0-sprint6", "work_unit_id": "u9",
                   "job_id": "j9", "workload_type": "hello_compute",
                   "range_start": 1, "range_end": 10, "params": {"op": "sum"}}
     assignment["manifest_signature"] = sign_manifest(assignment, DEV_SIGNING_KEY)
+    assignment = attach_signed_definition(assignment, DEV_SIGNING_KEY)
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: assignment)
 
     def fake_submit(url, unit_id, body, timeout=None, verify=True, **kw):
@@ -93,12 +95,14 @@ def test_work_cycle_executes_and_submits(monkeypatch):
 def test_work_cycle_sandboxed_flag_reaches_run_unit(monkeypatch):
     """--sandbox flows from the loop into run_unit (Sprint 22 wiring)."""
     from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+    from packages.protocol.workloads import attach_signed_definition
 
     seen: list[dict] = []
     assignment = {"protocol_version": "0.1.0-sprint6", "work_unit_id": "u9",
                   "job_id": "j9", "workload_type": "hello_compute",
                   "range_start": 1, "range_end": 10, "params": {"op": "sum"}}
     assignment["manifest_signature"] = sign_manifest(assignment, DEV_SIGNING_KEY)
+    assignment = attach_signed_definition(assignment, DEV_SIGNING_KEY)
     monkeypatch.setattr(main_mod, "claim_work", lambda *a, **k: assignment)
 
     real_run_unit = main_mod.run_unit
