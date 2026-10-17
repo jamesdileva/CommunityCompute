@@ -278,6 +278,16 @@ python -m pytest apps/coordinator/tests/test_leasing.py -v          # single fil
 python scripts/collect_baseline.py --out docs/baseline-<hostname>.json
 python scripts/check_lan.py --host 192.168.4.68 --port 8000
 
+# Large-scale simulation (Sprint 32): streams synthetic nodes, runs the REAL
+# compat+scoring on a bounded sample, and validates the real DB/queue at small N.
+python scripts/simulate_scale.py                       # 100 -> 100,000
+python scripts/simulate_scale.py --include-1m --sample 4000   # + 1,000,000
+python scripts/simulate_scale.py --scales 100,1000 --db-workers 200
+# engine: app/simulation/ (make_workers streams O(1) memory; simulate_scale,
+# run_db_backed). Synthetic attrs: GPU/VRAM, CPU, RAM, bandwidth, availability,
+# reliability, location, model cache. Safe on a laptop: no node is persisted
+# or spawned except the opt-in small DB-backed run.
+
 # Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
 # but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
 Remove-Item communitycompute.db -ErrorAction SilentlyContinue

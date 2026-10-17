@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 31 - scheduling optimization (weighted score: capability fit, cached model, estimated speed, reliability, availability, transfer cost; FIFO tie-break).
+**Status:** Sprint 32 - large-scale simulation (streaming synthetic fleet to 1,000,000 nodes; real scheduler sampled at every scale; small real-DB/queue validation).
 
 ## Core loop (stable abstraction)
 

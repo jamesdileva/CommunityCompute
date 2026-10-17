@@ -880,3 +880,31 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Sprint 32: large-scale simulation - simulated workers (100 -> 1,000,000) to stress scheduler + DB/queue; reuse scoring for worker-selection measurement.
 - Surface scheduling score/weights in the dashboard; let operators tune weights safely.
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-16 - Sprint 32: Large-Scale Simulation
+**Goal:** Test million-node-like behavior without owning million machines (roadmap Sprint 32).
+**Scope (in / out):**
+- In: streaming synthetic-worker engine with the Sprint-32 attributes (GPU/VRAM, CPU, RAM, bandwidth, availability, reliability, location, model cache); real compat+scoring exercised on a bounded deterministic sample at each scale; a small real-DB/queue validation; a scale driver.
+- Out: materializing 1M real rows/processes (deliberately avoided - streaming + sample keeps it safe/cheap); a full push/matching rewrite; dashboard UI.
+**Exit condition (verbatim from roadmap):** Scheduler behavior and database/queue architecture remain measurable under large simulated node counts.
+**Changes:**
+- Coordinator: app/simulation/workers.py (SimulatedWorker slots class + deterministic streaming make_workers; class mix cpu_only/igpu/consumer_gpu/amd_gpu/mid_gpu/high_gpu; profile()/score_context() shapes for the real scheduler), app/simulation/engine.py (simulate_scale: O(1)-memory streaming aggregate of capacity/online/throughput + sampled real compat.check + scoring.score; ScaleReport/run_scales), app/simulation/db_backed.py (register_simulated_workers + run_db_backed draining a real job via claim_next_unit/submit_result), app/simulation/__init__.py
+- scripts/simulate_scale.py (prints a scale table; default 100..100k, --include-1m opt-in, --db-workers validation)
+- Tests: test_simulation.py (11: deterministic fleet, sane attrs, profile feeds the real scheduler, scale reports sane/bounded/deterministic, capacity grows with scale, sample both accepts+rejects via real compat, run_scales, million node is cheap, DB-backed drains 60/60 and 45 units on 20 workers)
+- quick-reference.md (simulation section), README status
+**Tests run:**
+- full suite both orders -> 494 passed
+- Driver (local, this PC): 100/1k/10k/100k in 4/26/110/686 ms; 1,000,000 nodes in 9.0 s (sample 4000); match ~78%, score p50 ~1.77, cache ~13%; class mix at 1M: cpu_only 45%, consumer_gpu 22%, igpu 15%, mid 7%, amd 8%, high 3%
+- DB-backed: 200 workers + 200 units drained through the real queue in 11.6 s (aggregate matches expected; ~52 rows/s) - pass
+**Decisions:**
+- Nodes are streamed, never materialized: memory is O(chunk) not O(scale); only the bounded sample stores score values. 1M stays a few seconds and flat RAM (no PC-crash risk).
+- The sample runs the *real* compat.check + scoring.score rather than a re-implementation, so reported match/score metrics reflect the production decision path.
+- Throughput is an analytic expectation (sum of class rate x availability), not a fake event loop - honest and O(n).
+- The real DB/queue is validated at small, safe counts; the 200-worker run surfaced the O(units) per-claim scan as the measured scaling cost (documented, not hidden).
+- Script defaults cap at 100k with 1M opt-in, per the sprint scope decision.
+**Next steps:**
+- Sprint 33: multi-workload network - different hardware classes run different workload types through one scheduler (the simulated fleet's requirements already exercise this).
+- Use the harness to regression-test scheduler changes at scale in CI (small scales) and nightly (1M).
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
