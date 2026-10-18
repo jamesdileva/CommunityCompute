@@ -908,3 +908,30 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Sprint 33: multi-workload network - different hardware classes run different workload types through one scheduler (the simulated fleet's requirements already exercise this).
 - Use the harness to regression-test scheduler changes at scale in CI (small scales) and nightly (1M).
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-17 - Sprint 33: Multi-Workload Network
+**Goal:** Support multiple independent workload types so different hardware classes process different work through one shared scheduler (roadmap Sprint 33).
+**Scope (in / out):**
+- In: a new GPU-gated workload (`image_generate`) wired through the full stack (protocol catalog -> coordinator reference/verification -> worker executor -> signed definition); a mixed-class scheduling test proving class routing + concurrency; a live real-worker run; simulator unit names switched to the real type.
+- Out: real AI runtimes (deterministic pure-Python stub, per AGENTS.md non-goals), new requirement keys (reused `gpu`/`min_vram_mb`), dashboard UI.
+**Exit condition (verbatim from roadmap):** Different hardware classes simultaneously process different workload types through one shared scheduler.
+**Changes:**
+- packages/protocol/workloads.py: catalog entry `image_generate` v1 with `requirements={"gpu": True, "min_vram_mb": 2048}` + params `{size, seed}`
+- Coordinator: app/services/workloads/image_generate.py (deterministic tile checksum reference; `tile`/`normalize_params`/`compute`/`output_hash`), app/services/workloads/__init__.py (`KNOWN_WORKLOAD_TYPES` += image_generate; `expected`/`output_hash` dispatch), app/simulation/engine.py `_UNITS` now uses the real names (hello_compute/stats_range/embeddings/image_generate), api/health.py VERSION -> 0.1.0-sprint33, app/simulation/db_backed.py simulated-worker version
+- Worker: worker/execution/image_generate.py (ImageGenerateExecutor; same math, `verify` re-computes locally), worker/execution/registry.py registers it (so it appears in advertised runtimes)
+- Tests: test_multi_workload.py (6: allowlist, GPU roundtrip verified, value mismatch rejected, CPU-only excluded from GPU job, mixed-class concurrent claim of different types, unlisted type rejected), test_image_generate_executor.py (5), test_workload_registry.py +3, protocol test_workloads.py +1, updated exact-set assertions (test_isolation/test_security/test_executor)
+- quick-reference.md (multi-workload section), README status
+**Tests run:**
+- full suite both orders -> 509 passed (was 494)
+- Live (real coordinator + real worker, RX 6400): submitted a GPU-gated image_generate job (requirements gpu+min_vram 2048) and a CPU hello_compute job; a registered CPU-only class claimed {} on the GPU job (excluded); the real worker (gpus=['AMD Radeon RX 6400']) completed both jobs (2/2 each) through the one scheduler; CPU job aggregate final=3 - pass
+**Decisions:**
+- One new workload type (GPU-gated) is enough to satisfy the exit condition: CPU classes keep running hello_compute/stats_range/embeddings while the GPU class runs image_generate; four types, two hardware classes.
+- Deterministic stub: no AI runtime bundled (non-goals), so the coordinator re-derives exact tile checksums and verifies bit-for-bit like every other workload; the GPU requirement still gates scheduling.
+- Reused existing `Requirements` keys (`gpu`, `min_vram_mb`) - no protocol/schema change, no new requirement vocabulary.
+- Catalog requirements are documentation; the job still declares its own requirements at submit (explicit, unchanged behaviour).
+**Next steps:**
+- Sprint 34: economics (roadmap next section) - refine credits/cost accounting.
+- Surface per-workload-type throughput/queue mix in the dashboard.
+- Cross-network E2E + laptop install-from-bundle still pending (needs second machine).

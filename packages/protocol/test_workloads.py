@@ -13,9 +13,19 @@ KEY = "test-workload-key"
 
 
 def test_catalog_covers_known_workloads():
-    assert set(WORKLOAD_CATALOG) == {"hello_compute", "stats_range", "embeddings"}
+    assert set(WORKLOAD_CATALOG) == {
+        "hello_compute", "stats_range", "embeddings", "image_generate",
+    }
     assert definition_for("hello_compute").version == "1"
     assert definition_for("does-not-exist") is None
+
+
+def test_image_generate_is_gpu_gated():
+    """Sprint 33: the GPU requirement is what routes it to a GPU class."""
+    defn = definition_for("image_generate")
+    assert defn.version == "1"
+    assert defn.requirements.get("gpu") is True
+    assert defn.requirements.get("min_vram_mb") == 2048
 
 
 def test_canonical_is_order_independent():

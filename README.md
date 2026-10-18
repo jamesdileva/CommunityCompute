@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 32 - large-scale simulation (streaming synthetic fleet to 1,000,000 nodes; real scheduler sampled at every scale; small real-DB/queue validation).
+**Status:** Sprint 33 - multi-workload network (first GPU-gated workload, `image_generate`; one scheduler runs different workload types across different hardware classes simultaneously).
 
 ## Core loop (stable abstraction)
 

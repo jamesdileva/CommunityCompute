@@ -26,7 +26,7 @@ from packages.protocol import PROTOCOL_VERSION
 
 
 def register_simulated_workers(db: Session, count: int, *, seed: int = 32,
-                               version: str = "0.1.0-sprint32") -> list:
+                               version: str = "0.1.0-sprint33") -> list:
     """Insert ``count`` simulated workers (+capability rows). Returns the fleet."""
     now = datetime.now(timezone.utc)
     fleet = []

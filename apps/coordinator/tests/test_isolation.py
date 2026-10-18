@@ -81,7 +81,7 @@ def test_workloads_are_served_signed(client: TestClient):
     key = _mint(client, "Acme")
     manifests = client.get("/api/v1/workloads", headers=_auth(key)).json()
     names = {m["name"] for m in manifests}
-    assert names == {"hello_compute", "stats_range", "embeddings"}
+    assert names == {"hello_compute", "stats_range", "embeddings", "image_generate"}
     for manifest in manifests:
         sig = manifest.pop("signature")
         local = definition_for(manifest["name"]).to_manifest()

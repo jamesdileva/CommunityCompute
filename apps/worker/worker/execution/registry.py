@@ -20,16 +20,17 @@ import threading
 
 from packages.protocol.signing import verify_manifest
 from packages.protocol.workloads import definition_for, verify_definition
-
 from worker.execution.embeddings.executor import EmbeddingsExecutor
 from worker.execution.executor import UnitResult, WorkloadExecutor
 from worker.execution.hello_compute import HelloComputeExecutor
+from worker.execution.image_generate import ImageGenerateExecutor
 from worker.execution.stats_range import StatsRangeExecutor
 
 _EXECUTORS: dict[str, WorkloadExecutor] = {
     HelloComputeExecutor.workload_type: HelloComputeExecutor(),
     StatsRangeExecutor.workload_type: StatsRangeExecutor(),
     EmbeddingsExecutor.workload_type: EmbeddingsExecutor(),
+    ImageGenerateExecutor.workload_type: ImageGenerateExecutor(),
 }
 
 

@@ -1,8 +1,8 @@
 """Sprint 13: coordinator workload registry dispatch (verification stays generic)."""
 
 import pytest
-
-from app.services.workloads import expected, output_hash as workload_hash
+from app.services.workloads import expected
+from app.services.workloads import output_hash as workload_hash
 
 
 def test_expected_hello_compute_ops():
@@ -53,4 +53,21 @@ def test_hash_of_unknown_type_raises():
 
 def test_hash_of_embeddings():
     h = workload_hash("embeddings", "sum", {"vectors": [[0.1]]}, {"dim": 8})
+    assert isinstance(h, str) and len(h) == 64
+
+
+def test_expected_image_generate():
+    value = expected("image_generate", "sum", 0, 3, {"size": 8})
+    assert value["tiles"] == 4 and value["size"] == 8 and len(value["checksum"]) == 64
+
+
+def test_image_generate_params_default_and_bad():
+    default = expected("image_generate", "sum", 0, 1)
+    assert default["size"] == 32 and default["tiles"] == 2
+    with pytest.raises(ValueError):
+        expected("image_generate", "sum", 0, 1, {"size": -1})
+
+
+def test_hash_of_image_generate():
+    h = workload_hash("image_generate", "sum", {"size": 8, "tiles": 1, "checksum": "x"})
     assert isinstance(h, str) and len(h) == 64

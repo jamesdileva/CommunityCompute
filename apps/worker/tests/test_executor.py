@@ -1,10 +1,8 @@
 """Sprint 13: adapter interface, lifecycle ordering, multi-workload registry."""
 
 import worker.main as main_mod
-from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
-from packages.protocol.workloads import attach_signed_definition
 from worker.execution.executor import ExecutorMetadata, UnitResult, WorkloadExecutor
-from worker.execution.hello_compute import HelloComputeExecutor, compute, output_hash
+from worker.execution.hello_compute import HelloComputeExecutor, output_hash
 from worker.execution.registry import (
     executor_for,
     list_executors,
@@ -12,6 +10,9 @@ from worker.execution.registry import (
     supported_runtimes,
 )
 from worker.execution.stats_range import StatsRangeExecutor
+
+from packages.protocol.signing import DEV_SIGNING_KEY, sign_manifest
+from packages.protocol.workloads import attach_signed_definition
 
 GOOD = {
     "protocol_version": "0.1.0-sprint6",
@@ -60,7 +61,6 @@ class _GpuExecutor(WorkloadExecutor):
 
     @property
     def metadata(self):
-        from worker.execution.executor import ExecutorMetadata
 
         return ExecutorMetadata(workload_type="fake_gpu",
                                 requirements={"gpu": True, "gpu_vendor": "nvidia"})
@@ -201,9 +201,14 @@ def test_registry_dispatch_and_miss():
     from worker.execution.embeddings.executor import EmbeddingsExecutor
 
     assert isinstance(executor_for("embeddings"), EmbeddingsExecutor)
+    from worker.execution.image_generate import ImageGenerateExecutor
+
+    assert isinstance(executor_for("image_generate"), ImageGenerateExecutor)
     assert executor_for("nope") is None
-    assert sorted(supported_runtimes()) == ["embeddings", "hello_compute", "stats_range"]
-    assert len(list_executors()) == 3
+    assert sorted(supported_runtimes()) == [
+        "embeddings", "hello_compute", "image_generate", "stats_range",
+    ]
+    assert len(list_executors()) == 4
 
 
 def test_unknown_workload_fails_closed():

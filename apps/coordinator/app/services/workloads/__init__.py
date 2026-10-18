@@ -5,7 +5,7 @@ trusts worker output (architecture §18). Workload-specific math lives
 behind this registry so the verification path stays generic.
 """
 
-from app.services.workloads import embeddings, hello_compute, stats_range
+from app.services.workloads import embeddings, hello_compute, image_generate, stats_range
 from packages.protocol.workloads import (
     WorkloadDefinition,
     definition_for,
@@ -15,7 +15,11 @@ from packages.protocol.workloads import (
 # Sprint 21 allowlist: the only workload types this coordinator will run.
 # Both submit-time validation and verification dispatch consult this set —
 # anything else is rejected before it can reach a worker.
-KNOWN_WORKLOAD_TYPES = frozenset({"hello_compute", "stats_range", "embeddings"})
+# Sprint 33 adds image_generate: the first GPU-gated type, so a mixed fleet
+# can run different workload types on different hardware classes at once.
+KNOWN_WORKLOAD_TYPES = frozenset(
+    {"hello_compute", "stats_range", "embeddings", "image_generate"}
+)
 
 
 def is_known_workload(workload_type: str) -> bool:
@@ -52,13 +56,20 @@ def expected(workload_type: str, op: str, range_start: int, range_end: int,
     if workload_type == "embeddings":
         dim = (params or {}).get("dim", 128)
         return embeddings.compute_batch(range_start, range_end, dim)
+    if workload_type == "image_generate":
+        size, seed = image_generate.normalize_params(params)
+        return image_generate.compute(range_start, range_end, size, seed)
     raise ValueError(f"unknown workload type {workload_type!r}")
 
 
 def output_hash(workload_type: str, op: str, value: object, params: dict | None = None) -> str:
     if workload_type == "hello_compute":
         return hello_compute.output_hash(op, value)
-    if workload_type in ("stats_range", "embeddings"):
-        module = stats_range if workload_type == "stats_range" else embeddings
+    if workload_type in ("stats_range", "embeddings", "image_generate"):
+        module = {
+            "stats_range": stats_range,
+            "embeddings": embeddings,
+            "image_generate": image_generate,
+        }[workload_type]
         return module.output_hash(value)
     raise ValueError(f"unknown workload type {workload_type!r}")

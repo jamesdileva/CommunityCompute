@@ -26,12 +26,13 @@ from app.services.compat import check
 from app.simulation.workers import SimulatedWorker, make_workers
 
 # Representative unit templates: a mix of open CPU work, model-cached work,
-# and GPU-gated work. Requirements match the real schema keys.
+# and GPU-gated work. Requirements match the real schema keys, and the types
+# are the real workload names (Sprint 33 adds the GPU-gated image_generate).
 _UNITS: tuple[dict, ...] = (
     {"workload_type": "hello_compute", "requirements": {}},
     {"workload_type": "stats_range", "requirements": {"cpu_cores": 4}},
     {"workload_type": "embeddings", "requirements": {"model": "llama3-8b"}},
-    {"workload_type": "gpu_inference",
+    {"workload_type": "image_generate",
      "requirements": {"gpu": True, "min_vram_mb": 8192}},
 )
 

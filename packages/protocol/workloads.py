@@ -66,6 +66,17 @@ WORKLOAD_CATALOG: dict[str, WorkloadDefinition] = {
         params={"dim": "embedding dimension (default 128)"},
         requirements={"cpu_cores": 1},
     ),
+    # Sprint 33: the first GPU-gated workload. Same deterministic-stub pattern
+    # as the others, but its requirement routes it to GPU workers only - so a
+    # mixed fleet runs it alongside the CPU workloads, concurrently.
+    "image_generate": WorkloadDefinition(
+        name="image_generate",
+        version="1",
+        description="Deterministic pseudo-image tiles for a range of ids (GPU-gated).",
+        params={"size": "tile edge in px (default 32)",
+                "seed": "pattern seed (default 'cc')"},
+        requirements={"gpu": True, "min_vram_mb": 2048},
+    ),
 }
 
 

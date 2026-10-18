@@ -288,6 +288,20 @@ python scripts/simulate_scale.py --scales 100,1000 --db-workers 200
 # reliability, location, model cache. Safe on a laptop: no node is persisted
 # or spawned except the opt-in small DB-backed run.
 
+# Multi-workload network (Sprint 33): the first GPU-gated workload. Its
+# definition requires {"gpu": true, "min_vram_mb": 2048}, so only GPU-class
+# workers can claim it while CPU workloads run elsewhere through one scheduler.
+python -c @"
+import httpx
+print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type': 'image_generate',
+    'params': {'size': 16}, 'total_units': 4, 'chunk_size': 1,
+    'requirements': {'gpu': True, 'min_vram_mb': 2048}}, timeout=5).json()['id'])
+"@
+# deterministic tile checksums (pure-Python stub; no AI runtime bundled) so the
+# coordinator re-derives and verifies exactly. Executor: worker/execution/image_generate.py.
+# GET /api/v1/workloads now lists 4 signed types; a CPU-only worker's claim on
+# this job returns {} (excluded by the gpu requirement).
+
 # Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
 # but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
 Remove-Item communitycompute.db -ErrorAction SilentlyContinue

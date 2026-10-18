@@ -34,7 +34,7 @@ def test_unknown_workload_creates_no_rows(client: TestClient):
 
 
 def test_known_workloads_still_accepted(client: TestClient):
-    for workload in ("hello_compute", "stats_range", "embeddings"):
+    for workload in ("hello_compute", "stats_range", "embeddings", "image_generate"):
         resp = client.post(
             "/jobs",
             json={"workload_type": workload, "total_units": 2, "chunk_size": 2},
@@ -96,7 +96,6 @@ def test_dev_signing_key_warns_on_startup(caplog):
     """The dev default must be loud: sealed-but-forgeable assignments."""
     from app.main import app
 
-    with caplog.at_level(logging.WARNING, logger="coordinator"):
-        with TestClient(app):
-            pass
+    with caplog.at_level(logging.WARNING, logger="coordinator"), TestClient(app):
+        pass
     assert any("WORKLOAD_SIGNING_KEY" in r.message for r in caplog.records)
