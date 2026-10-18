@@ -302,6 +302,18 @@ print(httpx.post('http://127.0.0.1:8000/jobs', json={'workload_type': 'image_gen
 # GET /api/v1/workloads now lists 4 signed types; a CPU-only worker's claim on
 # this job returns {} (excluded by the gpu requirement).
 
+# Economics research (Sprint 34): measured cost-per-useful-compute model over
+# real coordinator data (execution time, verification overhead, uptime, classes)
+# vs cited centralized list prices. See docs/economics.md for the findings.
+python scripts/economics_report.py                     # human-readable report
+python scripts/economics_report.py --json report.json  # machine-readable
+python scripts/economics_report.py --electricity 0.30 --utilization 0.5 --infra 60
+# or with the coordinator running: GET http://127.0.0.1:8000/economics/report
+# model: app/economics/{model,measure,report}.py; costs are ASSUMED (electricity,
+# hardware amortization, bandwidth, infra) while volume/time/overhead are MEASURED.
+# Headline = utilization-adjusted cost per useful machine-hour; sensitivity grid
+# over electricity price x utilization shows where owned hardware beats cloud.
+
 # Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
 # but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
 Remove-Item communitycompute.db -ErrorAction SilentlyContinue
@@ -325,6 +337,15 @@ Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 | `LOG_LEVEL` | `info` | coordinator |
 | `MIN_WORKER_VERSION` | `` (off) | claim gate: outdated workers get 426, no new work |
 | `MAX_LEASES_PER_WORKER` | `8` | anti-hoarding: simultaneous leases per worker |
+| `ECONOMICS_ELECTRICITY_USD_PER_KWH` | `0.17` | economics model (Sprint 34) |
+| `ECONOMICS_BANDWIDTH_USD_PER_GB` | `0.0` | economics model |
+| `ECONOMICS_TRANSFER_MB_PER_UNIT` | `1.0` | economics model |
+| `ECONOMICS_INFRA_USD_PER_MONTH` | `40.0` | economics model |
+| `ECONOMICS_ASSUMED_UTILIZATION` | `0.30` | economics model (fallback when unmeasured) |
+| `ECONOMICS_CLOUD_GPU_USD_PER_HOUR` | `0.53` | economics baseline (T4-class) |
+| `ECONOMICS_CLOUD_CPU_USD_PER_HOUR` | `0.032` | economics baseline (vCPU) |
+| `ECONOMICS_HARDWARE_CLASSES` | `` (built-in) | economics JSON override for class table |
+| `ECONOMICS_CLOUD_BASELINES` | `` (built-in) | economics JSON override for baselines |
 
 ## Private beta (Sprint 26, mocked swarm — see docs/beta.md for the runbook)
 

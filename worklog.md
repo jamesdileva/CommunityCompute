@@ -935,3 +935,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Sprint 34: economics (roadmap next section) - refine credits/cost accounting.
 - Surface per-workload-type throughput/queue mix in the dashboard.
 - Cross-network E2E + laptop install-from-bundle still pending (needs second machine).
+
+---
+
+## 2026-10-18 - Sprint 34: Economics Research
+**Goal:** Determine whether the network can economically compete with existing compute providers (roadmap Sprint 34).
+**Scope (in / out):**
+- In: a cost model separating MEASURED inputs (execution time, verified-unit volume, verification overhead, failure rate, worker classes, uptime) from ASSUMED constants (electricity, hardware amortization, bandwidth, infra, centralized list prices); a DB-backed measurement pass; a report composer; an operator endpoint `GET /economics/report`; a CLI driver; a findings doc (`docs/economics.md`); a live end-to-end capture.
+- Out: real AI workloads (stubs only, per non-goals); measured wall-power (assumed W); willingness-to-pay/customer price data (none exists); payments; dashboard UI; any change to the protocol/credits behaviour.
+**Exit condition (verbatim from roadmap):** Produce a measured cost-per-useful-compute model. No assumptions about profitability should survive this sprint without data.
+**Changes:**
+- Coordinator: app/economics/model.py (HardwareCost/CostAssumptions, default_assumptions, cost_for_ms, class_busy_cost, bandwidth_cost_per_unit, network_cost_per_unit, centralized_cost, competitive_ratio, sensitivity; 6-class table + cited baselines), app/economics/measure.py (classify_worker, Measurement, measure, _heartbeat_window; availability measured over the observed window), app/economics/report.py (build_report/format_report/LIMITATIONS), app/economics/__init__.py, app/api/economics.py (GET /economics/report), app/main.py router registration, app/config.py economics_* settings
+- scripts/economics_report.py (CLI: --database-url/--electricity/--bandwidth/--infra/--utilization/--json)
+- Tests: apps/coordinator/tests/test_economics.py (10: model worked examples, monotonicity, unknown-class handling, classify_worker, empty-DB report, seeded report via the API)
+- docs/economics.md (findings), quick-reference.md (economics section + env vars), README status, api/health.py VERSION -> 0.1.0-sprint34
+**Tests run:**
+- full suite both orders -> 519 passed (was 509)
+- Live (real coordinator + two real workers, RX 6400 PC, +1 registered CPU-only class; 36 units across hello_compute/image_generate/stats_range, verify_sample=0.3): measured useful=36, executions=44, verification overhead x1.222, failures 0, busy 1.04 ms, workers_by_class {amd_gpu:2, cpu_only:1}, window 0.018 h, availability 0.92, utilization ~0 -> amd_gpu $3.59/useful-hr vs T4-class ($0.53) x6.77 and A100-class ($3.06) x1.17 (both costlier at measured idle); `scripts/economics_report.py --json` reproduced the same model from the DB - pass
+**Decisions:**
+- Headline metric is cost per USEFUL MACHINE-HOUR (utilization-adjusted), not per stub unit: sub-ms stubs make per-unit ratios meaningless (they would be dominated by infra amortization), whereas useful-hour is what a buyer compares to a cloud GPU-hour.
+- Measured vs assumed are kept strictly separate in the report; utilization carries a {value, source, measured_value, assumed_value} block. Assumed utilization (0.30) is only a fallback when no heartbeat window exists.
+- Availability is computed over the captured window, not the 24h default; otherwise a short capture reports ~0 coverage and makes utilization meaningless (fixed after the first live run).
+- Model clamps utilization to a 1% floor so an idle capture yields a finite (large) number rather than infinity - the honest answer for "a GPU that sits idle all day".
+- Verification overhead (x1.22 here) is folded in by costing ALL recorded busy time and dividing by useful units; it is a real, tunable cost/trust multiplier.
+- Centralized baselines are cited public on-demand list prices, overridable via `ECONOMICS_CLOUD_BASELINES`; CPU vCPU-hour is explicitly not like-for-like (whole desktop vs one vCPU) and the CPU-only class did no work this capture.
+- Finding: no profitability claim survives - owned hardware beats a T4-class instance per useful hour only above ~7-15% sustained utilization at residential power prices, and depreciation (not electricity) dominates at low utilization. Documented as conditional, not a promise.
+**Next steps:**
+- Sprint 35: public beta readiness (roadmap next section).
+- Re-measure with a real AI workload + multi-day/multi-machine capture + a CPU-only machine + metered power before any pricing decision.
+- Surface the economics report in the dashboard (node cost/earnings view).

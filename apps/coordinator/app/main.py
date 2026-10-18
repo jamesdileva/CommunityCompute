@@ -13,17 +13,19 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.health import VERSION, router as health_router
+from app.api.api_auth import router as auth_router
+from app.api.customer_api import router as customer_api_router
+from app.api.deps import CaptureBodyMiddleware
+from app.api.economics import router as economics_router
+from app.api.health import VERSION
+from app.api.health import router as health_router
 from app.api.heartbeats import router as heartbeats_router
 from app.api.jobs import router as jobs_router
 from app.api.network import router as network_router
 from app.api.resources import router as resources_router
-from app.api.workers import router as workers_router
 from app.api.work import router as work_router
+from app.api.workers import router as workers_router
 from app.api.ws import router as ws_router
-from app.api.api_auth import router as auth_router
-from app.api.customer_api import router as customer_api_router
-from app.api.deps import CaptureBodyMiddleware
 from app.config import get_settings
 from app.db import init_db
 from packages.protocol.signing import DEV_SIGNING_KEY
@@ -58,6 +60,7 @@ app.include_router(jobs_router)
 app.include_router(work_router)
 app.include_router(resources_router)
 app.include_router(network_router)
+app.include_router(economics_router)
 app.include_router(ws_router)
 app.include_router(auth_router)
 app.include_router(customer_api_router)

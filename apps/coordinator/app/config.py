@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     scoring_reference_transfer_bytes: int = 50_000_000
     scoring_bytes_per_range_unit: int = 4
     scoring_model_default_mb: int = 256
+    # Sprint 34 (economics research): ASSUMED cost inputs for the measured
+    # cost-per-useful-compute model. Every one of these is an assumption, not a
+    # measurement — the report keeps them in a separate `assumptions` block and
+    # the only measured inputs are what the network already records (execution
+    # time, uptime, overhead, unit volume). Override via env / .env.
+    economics_electricity_usd_per_kwh: float = 0.17
+    economics_bandwidth_usd_per_gb: float = 0.0
+    economics_transfer_mb_per_unit: float = 1.0
+    economics_infra_usd_per_month: float = 40.0
+    economics_assumed_utilization: float = 0.30
+    economics_cloud_gpu_usd_per_hour: float = 0.53
+    economics_cloud_cpu_usd_per_hour: float = 0.032
+    # JSON overrides ("" = built-in defaults in app.economics.model):
+    # hardware class power/price/life, and the cited centralized baselines.
+    economics_hardware_classes: str = ""
+    economics_cloud_baselines: str = ""
 
 
 @lru_cache

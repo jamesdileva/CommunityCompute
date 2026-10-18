@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 33 - multi-workload network (first GPU-gated workload, `image_generate`; one scheduler runs different workload types across different hardware classes simultaneously).
+**Status:** Sprint 34 - economics research (a measured cost-per-useful-compute model over real coordinator data: execution time, verification overhead, uptime, hardware classes — compared against cited centralized list prices; see `docs/economics.md`).
 
 ## Core loop (stable abstraction)
 
