@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CommunityCompute — turn idle PCs into a compute pool</title>
+  <meta name="description" content="Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="nav">
+    <span class="brand">CommunityCompute</span>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#download">Download</a>
+      <a href="#join">Join</a>
+      <a href="#workloads">Workloads</a>
+      <a href="#support">Support</a>
+      <a id="dashboard-link" href="#" class="cta-mini">Dashboard</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="badge">Invited prototype beta</p>
+      <h1>Turn your PC's idle time into useful compute.</h1>
+      <p class="lede">
+        CommunityCompute pools spare CPU and GPU cycles from ordinary home
+        computers. Your machine picks up small, self-contained work units while
+        it is idle, verifies them, and earns contribution credit — you keep
+        control the whole time.
+      </p>
+      <p class="actions">
+        <a class="cta" href="#download">Download the worker</a>
+        <a class="cta ghost" href="#how">See how it works</a>
+      </p>
+      <p class="fineprint">
+        This is a controlled, invited beta: you need an enrollment token from
+        the operator. See <a href="#join">how to join</a>.
+      </p>
+    </section>
+
+    <section id="how">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><strong>Install</strong> the worker and scan your hardware — it never
+          touches your files and opens no inbound ports.</li>
+        <li><strong>Set your limits</strong> — idle-only, CPU/GPU caps, a
+          temperature ceiling, hours, and battery rules.</li>
+        <li><strong>Join</strong> with a single-use enrollment token from the
+          operator. One token, one machine.</li>
+        <li><strong>Earn credit</strong> — every verified work unit adds to your
+          contribution balance, visible in your node's dashboard.</li>
+      </ol>
+      <p class="fineprint">
+        Work units are deterministic and independently verified, so the network
+        never has to trust a contributor's result blindly.
+      </p>
+    </section>
+
+    <section id="download">
+      <h2>Download the worker</h2>
+      <div class="cards">
+        <article class="card">
+          <h3>Windows bundle</h3>
+          <p>Self-contained <code>worker.exe</code> — no Python required.</p>
+          <p><a id="bundle-link" class="cta" href="#" rel="noopener">Get worker.exe</a></p>
+          <p class="fineprint">
+            Releases live on the project's GitHub page. The operator will tell
+            you which build to use for this beta.
+          </p>
+        </article>
+        <article class="card">
+          <h3>From source</h3>
+          <p>Have Python 3.12+? Clone the repo and run the worker directly.</p>
+          <pre><code>git clone &lt;repo&gt;
+python apps/worker/worker/main.py --setup</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="join">
+      <h2>Join in four steps</h2>
+      <ol class="steps">
+        <li>
+          <strong>Get a token.</strong> The operator sends you a single-use
+          enrollment token over a trusted channel.
+        </li>
+        <li>
+          <strong>Run setup.</strong> Answer a few questions (all have safe
+          defaults) — coordinator URL, token, contribution limits.
+          <pre><code>worker.exe --setup</code></pre>
+        </li>
+        <li>
+          <strong>Enroll.</strong> Exchange the token for this machine's
+          credential, then start contributing.
+          <pre><code>worker.exe --enroll &lt;token&gt; --coordinator-url http://&lt;coordinator&gt;:8000
+worker.exe --coordinator-url http://&lt;coordinator&gt;:8000 --loop</code></pre>
+        </li>
+        <li>
+          <strong>Watch your node.</strong> <code>worker.exe --status</code>
+          shows whether you are contributing; the dashboard shows your
+          contribution and credit balance.
+        </li>
+      </ol>
+      <p class="fineprint">
+        Pause any time from the tray, <code>worker.exe --pause</code>, or the
+        dashboard. Uninstall with <code>scripts/uninstall_worker.ps1</code>.
+      </p>
+    </section>
+
+    <section id="workloads">
+      <h2>Supported workloads</h2>
+      <p>The network runs only allowlisted, deterministic workloads. Point this
+        page at a coordinator to load the live catalog:</p>
+      <p>
+        <input id="api-base" type="url" placeholder="http://127.0.0.1:8000" />
+        <button id="load-workloads">Load catalog</button>
+      </p>
+      <div id="workload-list" class="cards" aria-live="polite"></div>
+      <p class="fineprint" id="workload-note"></p>
+    </section>
+
+    <section id="support">
+      <h2>Support &amp; privacy</h2>
+      <ul class="links">
+        <li><a href="https://github.com/jamesdileva/CommunityCompute/blob/main/docs/getting-started.md" rel="noopener">Getting started guide</a></li>
+        <li><a href="https://github.com/jamesdileva/CommunityCompute/blob/main/docs/privacy.md" rel="noopener">Privacy notice</a></li>
+        <li><a href="https://github.com/jamesdileva/CommunityCompute/blob/main/docs/terms.md" rel="noopener">Participation terms</a></li>
+        <li><a href="https://github.com/jamesdileva/CommunityCompute/blob/main/docs/support.md" rel="noopener">Troubleshooting &amp; diagnostics</a></li>
+      </ul>
+      <p class="fineprint">
+        For an issue, run <code>worker.exe --diagnostics</code> (it never
+        includes your credential) and send the output to the operator.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>CommunityCompute — an invited, allowlisted prototype beta. Public
+      enrollment is closed.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

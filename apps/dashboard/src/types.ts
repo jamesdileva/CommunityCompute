@@ -87,3 +87,44 @@ export interface WorkerStats {
   total_execution_ms: number;
   attempts: number;
 }
+
+export interface WorkerCredits {
+  worker_id: string;
+  balance: number;
+  earned: number;
+  spent: number;
+}
+
+export interface ReputationEvent {
+  event: string;
+  failure_kind: string | null;
+  work_unit_id: string | null;
+  created_at: string | null;
+}
+
+export interface WorkerReputation {
+  worker_id: string;
+  score: number | null;
+  rated: boolean;
+  outcomes: number;
+  accepted: number;
+  rejected: number;
+  expired: number;
+  agreed: number;
+  disagreed: number;
+  rejections_by_kind: Record<string, number>;
+  recent: ReputationEvent[];
+}
+
+export interface WorkerAccounting {
+  worker_id: string;
+  units_completed: number;
+  units_valid: number;
+  units_voided: number;
+  total_execution_ms: number;
+  total_cpu_time_ms: number;
+  total_gpu_time_ms: number;
+  verified_units: number;
+  availability_24h: number | null;
+  reliability: number | null;
+}

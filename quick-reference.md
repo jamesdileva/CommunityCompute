@@ -327,6 +327,27 @@ python scripts/prune.py --work-days 14 --financial-days 180 --apply
 # review docs: docs/security-review.md, docs/incident-response.md,
 #   docs/terms.md, docs/data-retention.md, docs/public-beta-readiness.md
 
+# Public community network (Sprint 36): discover -> download -> install ->
+# configure -> join -> receive work -> earn credit, no developer help.
+# 1. static onboarding website (no build step; plain HTML/CSS/JS):
+python scripts/serve_website.py                  # http://127.0.0.1:8080
+python scripts/serve_website.py --port 9000
+#    loads the live catalog from a coordinator: ?api=http://<coord>:8000
+#    (also editable on the page; remembered in localStorage)
+# 2. public read-only workload catalog (no auth; human-readable contract):
+#    GET http://127.0.0.1:8000/workloads  -> [{name, version, description,
+#      params, requirements, gpu}]  (signed manifests stay at /api/v1/workloads)
+# 3. contributor dashboard: "My node" tab (status, live resources, credits
+#    earned/spent, reliability, current work); operator tab renamed "Workers".
+#    cd apps/dashboard; npm run dev                 # http://127.0.0.1:5173
+# 4. participant docs: docs/getting-started.md, docs/support.md
+# 5. exit proof (automates the documented journey end to end):
+python scripts/onboard_participant.py --coordinator-url http://127.0.0.1:8000 --mint
+#    -> mints a token, runs --setup -> --enroll -> --loop, submits a job, and
+#       asserts joined + received_work + earned_credit (exit 0 only when all).
+#    bundle path: --worker-exe dist/worker/worker.exe
+#    participant flow (token from operator): --token <enrollment-token>
+
 # Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
 # but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
 Remove-Item communitycompute.db -ErrorAction SilentlyContinue

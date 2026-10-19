@@ -13,6 +13,7 @@ from pathlib import Path
 
 from worker.capabilities.discover import discover_capabilities
 from worker.capability_estimate import plain_language_summary, workload_fit_note
+from worker.gpu_stats import query_gpu
 from worker.policy.store import load_policy, policy_path, save_policy
 
 
@@ -63,8 +64,14 @@ def run_setup(
     coordinator_url: str | None = None,
     input_fn=input,
     print_fn=print,
+    gpu_probe=query_gpu,
 ) -> dict:
-    """Interactive setup. Returns what was configured (for tests/logs)."""
+    """Interactive setup. Returns what was configured (for tests/logs).
+
+    `gpu_probe` reports the machine's live GPU metrics (default nvidia-smi);
+    it is injectable so the wizard's metering-aware defaults can be tested
+    deterministically.
+    """
     print_fn("CommunityCompute worker setup")
     print_fn("============================")
     print_fn("Defaults are safe: answer with Enter to accept them.")
@@ -94,16 +101,34 @@ def run_setup(
     for workload in ("hello_compute", "stats_range", "embeddings"):
         print_fn(f"    {workload_fit_note(workload, tiers)}")
 
+    # Metering awareness: a GPU cap or temperature ceiling that the machine
+    # cannot measure can never be enforced -- and the policy engine fails
+    # closed on unknown signals, so imposing one would leave this machine
+    # contributing nothing. Only offer limits we can actually honour.
+    gpu = gpu_probe()
+    gpu_metered = gpu.get("utilization_gpu") is not None
+    temp_metered = gpu.get("temperature_gpu") is not None
+
     # Contribution policy: every roadmap setting, all with safe defaults.
     print_fn("")
     print_fn("Contribution policy (change any time in policy.json):")
     idle_only = _ask_yes_no("Contribute only while the machine is idle?", True, input_fn)
     max_cpu_percent = _ask_float("Maximum CPU percent while contributing (0-100)", 80.0,
                                  input_fn)
-    max_gpu_percent = _ask_float("Maximum GPU percent while contributing (0-100)", 80.0,
-                                 input_fn)
-    temp = _ask("GPU temperature ceiling in C (blank = no ceiling)", "", input_fn)
-    temperature_ceiling_c = float(temp) if temp.replace(".", "", 1).isdigit() else None
+    if gpu_metered:
+        max_gpu_percent = _ask_float("Maximum GPU percent while contributing (0-100)",
+                                     80.0, input_fn)
+    else:
+        max_gpu_percent = None
+        print_fn("  GPU usage is not measurable on this machine (no nvidia-smi),")
+        print_fn("  so no GPU cap is set -- it could not be enforced. Add")
+        print_fn('  "max_gpu_percent" to policy.json if your driver becomes measurable.')
+    if temp_metered:
+        temp = _ask("GPU temperature ceiling in C (blank = no ceiling)", "", input_fn)
+        temperature_ceiling_c = float(temp) if temp.replace(".", "", 1).isdigit() else None
+    else:
+        temperature_ceiling_c = None
+        print_fn("  GPU temperature is not measurable here; no temperature ceiling set.")
     battery = _ask("Battery policy (allow / plugged_only)", "allow", input_fn)
     battery_policy = battery if battery in ("allow", "plugged_only") else "allow"
     schedule = _ask("Allowed hours as start-end, 24h local (blank = always)", "", input_fn)

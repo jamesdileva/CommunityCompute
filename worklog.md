@@ -993,3 +993,35 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Next steps:**
 - Sprint 36: public community network (roadmap next section) -- only when intent is to start opening controlled registration.
 - Before any public enrollment: TLS, rate limiting + abuse detection, operator-endpoint auth, network-isolated real workloads, Linux sandbox parity, and a cross-network contributor test.
+
+---
+
+## 2026-10-18 - Sprint 36: Public Community Network
+**Goal:** Make the network joinable end to end by an outside participant with no developer help (roadmap Sprint 36).
+**Scope (in / out):**
+- In: a static onboarding website (discover -> download -> install -> configure -> join); a public read-only workload catalog; a contributor "My node" dashboard tab; participant getting-started + support docs; and a scripted outside-participant onboarding proof + automated test. Registration stays the operator-minted, single-use enrollment token (controlled) decided in Sprint 35.
+- Out: open self-serve public enrollment (public enrollment remains NO-GO), TLS/rate-limiting/abuse-detection, real worker auto-update, operator-endpoint auth, cross-network (non-LAN) proof, protocol/credits changes.
+**Exit condition (verbatim from roadmap):** An outside participant can discover the project, download the Worker, install it, configure contribution, join the network, receive approved work, and earn contribution credit without developer assistance.
+**Changes:**
+- Coordinator: app/api/catalog.py (`GET /workloads`, public read-only catalog sourced from the signed workload definitions), app/main.py router registration, api/health.py VERSION -> 0.1.0-sprint36
+- Website: apps/website/{index.html,styles.css,app.js,README.md} (no build step; runtime-configurable via `?api=`/`?dashboard=`/`?download=` + on-page coordinator URL in localStorage; fetches the live catalog, states plainly it is an invited allowlisted beta) + scripts/serve_website.py (stdio-free static server, default http://127.0.0.1:8080)
+- Dashboard: src/components/MyNodeView.tsx (contributor "My node": node picker, live status/resources, credit balance earned/spent, reliability, contribution rollup, current work), src/App.tsx (tabs "My node" | "Workers" | "Network"; operator tab renamed Contributor -> Workers), src/services/api.ts + src/types.ts (workerCredits/Reputation/Accounting)
+- Docs: docs/getting-started.md (participant journey incl. operator token minting), docs/support.md (redacted `--diagnostics`, common issues, operator commands)
+- Exit proof: scripts/onboard_participant.py (mint token -> `worker --setup` -> `--enroll` -> submit a job -> `--loop` -> assert joined + received_work + earned_credit; `--mint` operator step, `--worker-exe` bundle path, `--token` participant path)
+- Tests: apps/coordinator/tests/test_onboarding.py (13: public catalog contents/no-auth/no-signature, documented endpoints exist on the app, participant docs exist, plan order, summarize verdict requires all three conditions, render reports the exit condition, website assets exist/wired/states beta, serve_website targets apps/website, getting-started + support doc coverage)
+- README status + repo layout (website), quick-reference.md (public community network section)
+**Tests run:**
+- test_onboarding.py -> 13 passed
+- full suite both orders -> 541 passed (was 527)
+- dashboard `npm run build` (tsc --noEmit && vite build) -> clean
+- Live: `scripts/onboard_participant.py --mint` against a real coordinator + real worker from a clean temp state -> joined + received_work + earned_credit, exit 0; `GET /workloads` served 4 types; website served and fetched the live catalog
+- Live bug caught+fixed: on a non-NVIDIA GPU the wizard's default GPU cap could never be enforced by the policy engine (which fails closed on unknown GPU usage), so the machine contributed nothing. The wizard now probes GPU metering and omits unenforceable GPU cap/temperature limits, with a new deterministic test (test_wizard_omits_unenforceable_gpu_limits).
+**Decisions:**
+- Registration stays *controlled*: the website documents the operator-minted single-use enrollment token and says the beta is invited/allowlisted; there is no self-serve signup, consistent with the Sprint 35 NO-GO.
+- The public catalog is deliberately unauthenticated and unsigned (name/version/description/params/requirements/gpu); the signed manifests remain on the customer API (`/api/v1/workloads`), so the visitor surface exposes the human contract without adding a new trust boundary.
+- The website has no build step and is configurable at runtime, so the same folder works from localhost, a LAN host, or any static host without a rebuild.
+- The onboarding proof asserts the exit condition as machine-checkable booleans (joined AND received_work AND earned_credit) and exits non-zero otherwise; it uses only documented participant/operator endpoints (checked by a test against the live route table).
+- The operator dashboard tab was renamed to "Workers" so "My node" is unambiguously the contributor view.
+**Next steps:**
+- Sprint 37 (roadmap next section): paid compute / metering, only when ready to move beyond the free pool + prototype credit.
+- Still required before open public enrollment: TLS everywhere, rate limiting + abuse detection, operator-endpoint auth, network-isolated real workloads, Linux sandbox parity, and a cross-network contributor test.

@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 35 - public beta readiness (security/sandboxing/privacy review, participation terms, incident runbook, data-retention enforcement, and a documented go/no-go decision at `GET /beta/readiness`: **NO-GO for open public enrollment, GO for an invited allowlisted beta** — see `docs/public-beta-readiness.md`).
+**Status:** Sprint 36 - public community network (static onboarding website, public workload catalog at `GET /workloads`, contributor "My node" dashboard tab, participant getting-started/support docs, and a scripted outside-participant onboarding proof). Contributors join the invited, allowlisted beta end-to-end without developer help — see `docs/getting-started.md` and `docs/public-beta-readiness.md`.
 
 ## Core loop (stable abstraction)
 
@@ -15,7 +15,8 @@ Job → Work Units → Capability Matcher → Worker Lease → Execution → Ver
 ```text
 apps/coordinator/   FastAPI control plane (Sprint 1+: /health, SQLite, scheduler)
 apps/worker/        Python daemon: heartbeat, execution, policy (Sprint 2+: registration)
-apps/dashboard/     React + TS + Vite (thin until protocol stabilizes, Sprint 16)
+apps/dashboard/     React + TS + Vite (Sprint 16; "My node" contributor tab in Sprint 36)
+apps/website/       static onboarding site, no build step (Sprint 36)
 packages/protocol/      versioned Worker↔Coordinator messages
 packages/workload-spec/ workload requirement schemas
 packages/shared-types/  shared types

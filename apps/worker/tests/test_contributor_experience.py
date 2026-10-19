@@ -75,6 +75,16 @@ def _answers(values: list[str]):
     return ask
 
 
+def _gpu_metered() -> dict:
+    """Deterministic probe: metrics are readable (e.g. nvidia-smi present)."""
+    return {"utilization_gpu": 4.0, "temperature_gpu": 38.0, "memory_used_mb": 512}
+
+
+def _gpu_unmetered() -> dict:
+    """Deterministic probe: nothing readable (Intel/AMD without a driver tool)."""
+    return {"utilization_gpu": None, "temperature_gpu": None, "memory_used_mb": None}
+
+
 def test_wizard_full_onboarding_flow(tmp_path):
     out: list[str] = []
     answers = [
@@ -93,6 +103,7 @@ def test_wizard_full_onboarding_flow(tmp_path):
         tmp_path / ".worker_id",
         input_fn=_answers(answers),
         print_fn=out.append,
+        gpu_probe=_gpu_metered,
     )
     assert configured["idle_only"] is True
     assert configured["max_cpu_percent"] == 80.0
@@ -108,13 +119,45 @@ def test_wizard_full_onboarding_flow(tmp_path):
     assert saved["bandwidth_mbps"] is None
 
 
-def test_wizard_records_bandwidth_cap(tmp_path):
+def test_wizard_reports_bandwidth_cap(tmp_path):
     answers = ["http://x:8000", "tok", "y", "50", "50", "", "plugged_only", "", "10", "n"]
     configured = run_setup(tmp_path / ".worker_id",
                            input_fn=_answers(answers),
-                           print_fn=lambda _line: None)
+                           print_fn=lambda _line: None,
+                           gpu_probe=_gpu_metered)
     assert configured["bandwidth_mbps"] == 10.0
     assert configured["battery_policy"] == "plugged_only"
+
+
+def test_wizard_omits_unenforceable_gpu_limits(tmp_path):
+    """A machine whose GPU can't be measured must still be allowed to contribute.
+
+    Sprint 36: the policy engine fails closed on an unknown GPU signal, so an
+    unenforceable GPU cap/temperature ceiling would leave the machine idle
+    forever. The wizard drops them instead.
+    """
+    out: list[str] = []
+    answers = [
+        "http://x:8000",  # coordinator
+        "tok",            # token
+        "n",              # idle-only: no
+        "90",             # max cpu (this one is measurable, keep it)
+        "allow",          # battery
+        "",               # hours
+        "",               # bandwidth
+        "n",              # autostart
+    ]
+    configured = run_setup(tmp_path / ".worker_id",
+                           input_fn=_answers(answers),
+                           print_fn=out.append,
+                           gpu_probe=_gpu_unmetered)
+    assert configured["max_cpu_percent"] == 90.0
+    assert configured["max_gpu_percent"] is None
+    assert configured["temperature_ceiling_c"] is None
+    assert any("GPU usage is not measurable" in line for line in out)
+    saved = json.loads((tmp_path / "policy.json").read_text(encoding="utf-8"))
+    assert saved["max_gpu_percent"] is None
+    assert saved["temperature_ceiling_c"] is None
 
 
 # ---- bandwidth ledger -------------------------------------------------------

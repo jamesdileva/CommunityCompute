@@ -28,12 +28,18 @@ def _answers(values: list[str]):
     return ask
 
 
+def _gpu_metered() -> dict:
+    """Deterministic probe: GPU metrics readable, so GPU limits are offered."""
+    return {"utilization_gpu": 4.0, "temperature_gpu": 38.0, "memory_used_mb": 512}
+
+
 def test_wizard_defaults(tmp_path):
     out: list[str] = []
     configured = run_setup(
         tmp_path / ".worker_id",
         input_fn=_answers(["", "", "", "", "", "", "", "", "", ""]),
         print_fn=out.append,
+        gpu_probe=_gpu_metered,
     )
     assert configured["coordinator_url"] == "http://127.0.0.1:8000"
     assert configured["enrollment_token"] is None
@@ -58,6 +64,7 @@ def test_wizard_custom_answers(tmp_path):
         input_fn=_answers(["http://pc:8000", "tok-123", "y", "50", "60",
                            "70", "plugged_only", "9-17", "10", "n"]),
         print_fn=lambda _line: None,
+        gpu_probe=_gpu_metered,
     )
     assert configured["coordinator_url"] == "http://pc:8000"
     assert configured["enrollment_token"] == "tok-123"
@@ -75,6 +82,7 @@ def test_wizard_bad_cpu_falls_back_to_default(tmp_path):
         tmp_path / ".worker_id",
         input_fn=_answers(["", "", "", "lots", "", "", "", "", "", ""]),
         print_fn=lambda _line: None,
+        gpu_probe=_gpu_metered,
     )
     assert configured["max_cpu_percent"] == 80.0
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import ContributorView from "./components/ContributorView";
+import MyNodeView from "./components/MyNodeView";
 import NetworkView from "./components/NetworkView";
 
-type Tab = "contributor" | "network";
+type Tab = "mynode" | "workers" | "network";
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("contributor");
+  const [tab, setTab] = useState<Tab>("mynode");
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -17,19 +18,20 @@ export default function App() {
     <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 1100, margin: "0 auto" }}>
       <h1>CommunityCompute Dashboard</h1>
       <nav>
-        <button disabled={tab === "contributor"} onClick={() => setTab("contributor")}>
-          Contributor
+        <button disabled={tab === "mynode"} onClick={() => setTab("mynode")}>
+          My node
+        </button>{" "}
+        <button disabled={tab === "workers"} onClick={() => setTab("workers")}>
+          Workers
         </button>{" "}
         <button disabled={tab === "network"} onClick={() => setTab("network")}>
           Network
         </button>
       </nav>
       <hr />
-      {tab === "contributor" ? (
-        <ContributorView refreshTick={tick} />
-      ) : (
-        <NetworkView refreshTick={tick} />
-      )}
+      {tab === "mynode" && <MyNodeView refreshTick={tick} />}
+      {tab === "workers" && <ContributorView refreshTick={tick} />}
+      {tab === "network" && <NetworkView refreshTick={tick} />}
       <style>{`
         .card { border: 1px solid #ccc; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
         .card header { display: flex; gap: 12px; align-items: center; }
