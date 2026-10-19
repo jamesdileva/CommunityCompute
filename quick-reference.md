@@ -314,6 +314,19 @@ python scripts/economics_report.py --electricity 0.30 --utilization 0.5 --infra 
 # Headline = utilization-adjusted cost per useful machine-hour; sensitivity grid
 # over electricity price x utilization shows where owned hardware beats cloud.
 
+# Public-beta readiness (Sprint 35): the roadmap checklist as live data, plus
+# a documented go/no-go decision (docs/public-beta-readiness.md) -- currently
+# NO-GO for open enrollment / GO for an invited, allowlisted beta.
+#   GET  http://127.0.0.1:8000/beta/readiness
+# Data retention (dry-run by default; never automatic):
+python scripts/prune.py                          # count what would be removed
+python scripts/prune.py --apply                  # enforce (telemetry 7d, work 30d)
+python scripts/prune.py --work-days 14 --financial-days 180 --apply
+#   POST /beta/prune           (dry run)
+#   POST /beta/prune?apply=true
+# review docs: docs/security-review.md, docs/incident-response.md,
+#   docs/terms.md, docs/data-retention.md, docs/public-beta-readiness.md
+
 # Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
 # but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
 Remove-Item communitycompute.db -ErrorAction SilentlyContinue
@@ -346,6 +359,9 @@ Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 | `ECONOMICS_CLOUD_CPU_USD_PER_HOUR` | `0.032` | economics baseline (vCPU) |
 | `ECONOMICS_HARDWARE_CLASSES` | `` (built-in) | economics JSON override for class table |
 | `ECONOMICS_CLOUD_BASELINES` | `` (built-in) | economics JSON override for baselines |
+| `RETENTION_TELEMETRY_DAYS` | `7` | retention: heartbeats + samples window (Sprint 35) |
+| `RETENTION_WORK_DAYS` | `30` | retention: terminal units/results/attempts/tokens |
+| `RETENTION_FINANCIAL_DAYS` | `0` | retention: ledger/records window (0 = keep forever) |
 
 ## Private beta (Sprint 26, mocked swarm — see docs/beta.md for the runbook)
 

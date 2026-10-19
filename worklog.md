@@ -964,3 +964,32 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 - Sprint 35: public beta readiness (roadmap next section).
 - Re-measure with a real AI workload + multi-day/multi-machine capture + a CPU-only machine + metered power before any pricing decision.
 - Surface the economics report in the dashboard (node cost/earnings view).
+
+---
+
+## 2026-10-18 - Sprint 35: Public Beta Readiness
+**Goal:** Determine whether public participation is responsible (roadmap Sprint 35).
+**Scope (in / out):**
+- In: the 11-item checklist as review docs + a machine-checkable readiness endpoint; implement data-retention enforcement (service + config + CLI + endpoint + tests); the documented go/no-go decision (`docs/public-beta-readiness.md`); operational docs (security/sandboxing review, incident runbook, terms, retention policy).
+- Out: TLS, public-internet deployment, real AI workloads / network-isolated execution, API rate limiting, automated abuse detection, real worker auto-update (in-place download/install), operator-endpoint auth, Prometheus/metrics stack (all recorded as public blockers/gaps). No protocol/credits changes.
+**Exit condition (verbatim from roadmap):** A documented go/no-go decision for public worker enrollment.
+**Decision:** NO-GO for open public enrollment; GO for an invited, allowlisted prototype beta of trusted technical contributors on a trusted network. Mirrored as live data at `GET /beta/readiness` (`decision.public_enrollment=no-go`, `decision.invited_beta=go`) with an explicit `public_blockers` list.
+**Changes:**
+- Coordinator: app/services/retention.py (three windows -- telemetry/work/financial -- dry-run by default, terminal-units-only, never automatic), app/services/readiness.py (checklist statuses derived from live routes/docs/settings + `collect_route_paths` for included routers), app/api/beta.py (`GET /beta/readiness`, `POST /beta/prune`), app/main.py router registration, app/config.py `retention_*` settings, api/health.py VERSION -> 0.1.0-sprint35
+- scripts/prune.py (CLI: --telemetry-days/--work-days/--financial-days/--apply/--json, dry-run default)
+- Tests: apps/coordinator/tests/test_beta_readiness.py (8: dry-run counts without deleting, stale-terminal-only deletion with fresh/queued/lease-held units surviving, financial kept by default then purged, used tokens pruned + active kept, identity/credentials retained, readiness checklist shape + NO-GO/GO decision, prune endpoint dry-run default, missing-docs -> gap)
+- Docs: docs/public-beta-readiness.md (the decision), docs/security-review.md (threat model + controls + sandboxing + findings), docs/incident-response.md (severities + containment commands), docs/terms.md, docs/data-retention.md
+- README status, quick-reference.md (readiness/retention section + env vars)
+**Tests run:**
+- test_beta_readiness.py -> 8 passed
+- full suite both orders -> 527 passed (was 519)
+**Decisions:**
+- Decision is data-driven, not prose-only: `build_readiness` derives each status from live state (route present, doc on disk, setting configured) and only flips public enrollment to `go` when every listed public blocker is met.
+- Retention deletes only *terminal* work units; a unit holding a live lease (queued/dispatched/running) is never touched. The ledger is safe because `contribution_records`/`credit_ledger` have no FK to `work_units`.
+- Financial records are kept forever by default (`retention_financial_days=0`); telemetry (7d) and work artifacts (30d) age out.
+- Retention enforcement is explicit and dry-run by default (no background job) -- matches AGENTS.md "ask before destructive ops" and keeps the operator in control.
+- The invited-beta GO is honest because only allowlisted deterministic stub workloads run today; the moment real/arbitrary workloads arrive, the TLS + network-isolation + Linux-sandbox gaps become blockers.
+- Kept auto-update check-only + version gate per scope decision; documented manual reinstall.
+**Next steps:**
+- Sprint 36: public community network (roadmap next section) -- only when intent is to start opening controlled registration.
+- Before any public enrollment: TLS, rate limiting + abuse detection, operator-endpoint auth, network-isolated real workloads, Linux sandbox parity, and a cross-network contributor test.

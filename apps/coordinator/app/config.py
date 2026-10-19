@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # hardware class power/price/life, and the cited centralized baselines.
     economics_hardware_classes: str = ""
     economics_cloud_baselines: str = ""
+    # Sprint 35 (public beta readiness): data-retention windows in days. These
+    # are only *read* by readiness; enforcement is always explicit (dry-run by
+    # default) via scripts/prune.py or POST /beta/prune -- never automatic.
+    # telemetry = heartbeats + resource samples; work = terminal units/results/
+    # attempts + used tokens; financial = contribution records + credit ledger
+    # (0 = keep forever). See docs/data-retention.md.
+    retention_telemetry_days: int = 7
+    retention_work_days: int = 30
+    retention_financial_days: int = 0
 
 
 @lru_cache

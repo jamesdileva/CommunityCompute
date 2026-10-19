@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.api_auth import router as auth_router
+from app.api.beta import router as beta_router
 from app.api.customer_api import router as customer_api_router
 from app.api.deps import CaptureBodyMiddleware
 from app.api.economics import router as economics_router
@@ -61,6 +62,7 @@ app.include_router(work_router)
 app.include_router(resources_router)
 app.include_router(network_router)
 app.include_router(economics_router)
+app.include_router(beta_router)
 app.include_router(ws_router)
 app.include_router(auth_router)
 app.include_router(customer_api_router)

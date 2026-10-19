@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 34 - economics research (a measured cost-per-useful-compute model over real coordinator data: execution time, verification overhead, uptime, hardware classes — compared against cited centralized list prices; see `docs/economics.md`).
+**Status:** Sprint 35 - public beta readiness (security/sandboxing/privacy review, participation terms, incident runbook, data-retention enforcement, and a documented go/no-go decision at `GET /beta/readiness`: **NO-GO for open public enrollment, GO for an invited allowlisted beta** — see `docs/public-beta-readiness.md`).
 
 ## Core loop (stable abstraction)
 
