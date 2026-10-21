@@ -4,6 +4,7 @@ import type {
   Worker,
   WorkerAccounting,
   WorkerCredits,
+  WorkerEarnings,
   WorkerReputation,
   WorkUnit,
 } from "../types";
@@ -32,6 +33,11 @@ function pct(value: number | null | undefined): string {
   return value === null || value === undefined ? "?" : `${Math.round(value * 100)}%`;
 }
 
+function fmtMoney(cents: number | null | undefined, currency: string): string {
+  if (cents === null || cents === undefined) return "…";
+  return `${(cents / 100).toFixed(2)} ${currency}`;
+}
+
 export default function MyNodeView({ refreshTick }: { refreshTick: number }) {
   const [workerId, setWorkerId] = useState(
     () => localStorage.getItem(STORAGE_KEY) ?? "",
@@ -42,6 +48,7 @@ export default function MyNodeView({ refreshTick }: { refreshTick: number }) {
   const [credits, setCredits] = useState<WorkerCredits | null>(null);
   const [reputation, setReputation] = useState<WorkerReputation | null>(null);
   const [accounting, setAccounting] = useState<WorkerAccounting | null>(null);
+  const [earnings, setEarnings] = useState<WorkerEarnings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +65,7 @@ export default function MyNodeView({ refreshTick }: { refreshTick: number }) {
       setCredits(null);
       setReputation(null);
       setAccounting(null);
+      setEarnings(null);
       setError(null);
       return;
     }
@@ -69,6 +77,7 @@ export default function MyNodeView({ refreshTick }: { refreshTick: number }) {
       setCredits(null);
       setReputation(null);
       setAccounting(null);
+      setEarnings(null);
     };
     Promise.all([
       api.worker(workerId),
@@ -76,14 +85,16 @@ export default function MyNodeView({ refreshTick }: { refreshTick: number }) {
       api.workerCredits(workerId).catch(() => null),
       api.workerReputation(workerId).catch(() => null),
       api.workerAccounting(workerId).catch(() => null),
+      api.workerEarnings(workerId).catch(() => null),
     ])
-      .then(([w, wk, cr, rep, acct]) => {
+      .then(([w, wk, cr, rep, acct, earn]) => {
         if (!alive) return;
         setWorker(w);
         setWork(wk);
         setCredits(cr);
         setReputation(rep);
         setAccounting(acct);
+        setEarnings(earn);
         setError(null);
       })
       .catch((e) => {
@@ -212,6 +223,32 @@ export default function MyNodeView({ refreshTick }: { refreshTick: number }) {
             <p className="fineprint" style={{ color: "#555", fontSize: 12 }}>
               Credit is a prototype accounting unit — it has no cash value in
               this beta.
+            </p>
+          </article>
+
+          <article className="card">
+            <header>
+              <strong>Paid-work earnings</strong>
+            </header>
+            <div className="statgrid">
+              <div className="stat">
+                <span>Balance</span>
+                <strong>{fmtMoney(earnings?.balance_cents, earnings?.currency ?? "USD")}</strong>
+                <small>verified paid units</small>
+              </div>
+              <div className="stat">
+                <span>Paid units</span>
+                <strong>
+                  {earnings
+                    ? earnings.entries.filter((e) => !e.voided).length
+                    : "…"}
+                </strong>
+                <small>lifetime</small>
+              </div>
+            </div>
+            <p className="fineprint" style={{ color: "#555", fontSize: 12 }}>
+              Simulated money in this beta — it has no cash value and no payouts
+              are made.
             </p>
           </article>
 

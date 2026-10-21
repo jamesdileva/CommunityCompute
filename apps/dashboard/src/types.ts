@@ -128,3 +128,18 @@ export interface WorkerAccounting {
   availability_24h: number | null;
   reliability: number | null;
 }
+
+export interface EarningsEntry {
+  job_id: string;
+  work_unit_id: string | null;
+  amount_cents: number;
+  voided: boolean;
+  created_at: string | null;
+}
+
+export interface WorkerEarnings {
+  worker_id: string;
+  currency: string;
+  balance_cents: number;
+  entries: EarningsEntry[];
+}

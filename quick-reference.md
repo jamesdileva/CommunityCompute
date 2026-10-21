@@ -336,9 +336,11 @@ python scripts/serve_website.py --port 9000
 #    (also editable on the page; remembered in localStorage)
 # 2. public read-only workload catalog (no auth; human-readable contract):
 #    GET http://127.0.0.1:8000/workloads  -> [{name, version, description,
-#      params, requirements, gpu}]  (signed manifests stay at /api/v1/workloads)
+#      params, requirements, gpu, price_cents_per_unit, currency}]
+#      (signed manifests stay at /api/v1/workloads)
 # 3. contributor dashboard: "My node" tab (status, live resources, credits
-#    earned/spent, reliability, current work); operator tab renamed "Workers".
+#    earned/spent, paid-work earnings, reliability, current work); operator tab
+#    renamed "Workers".
 #    cd apps/dashboard; npm run dev                 # http://127.0.0.1:5173
 # 4. participant docs: docs/getting-started.md, docs/support.md
 # 5. exit proof (automates the documented journey end to end):
@@ -347,6 +349,28 @@ python scripts/onboard_participant.py --coordinator-url http://127.0.0.1:8000 --
 #       asserts joined + received_work + earned_credit (exit 0 only when all).
 #    bundle path: --worker-exe dist/worker/worker.exe
 #    participant flow (token from operator): --token <enrollment-token>
+
+# Paid compute experiment (Sprint 37): prepaid balances + per-unit rate card +
+# network fee. Simulated money only -- no real charges, no payouts.
+# 1. operator mints a customer, customer tops up (simulated provider):
+#    POST /api/v1/customers            {"name":"Acme"} -> {id, api_key}
+#    POST /api/v1/billing/topup        (Bearer) {"amount_cents":500} -> balance
+# 2. customer submits a prepaid job (402 when short; atomic, no orphan job):
+#    POST /api/v1/jobs                 (Bearer) hello_compute, 5c/unit default
+# 3. accounting views:
+#    GET /api/v1/billing               -> balance, charges, rate card
+#    GET /billing/pricing              -> rate card + network fee percent
+#    GET /billing/network              -> charged vs contributor vs network
+#    GET /billing/accounts             -> every customer's balance
+#    GET /workers/{id}/earnings        -> contributor compensation entries
+# 4. split: contributor = price - network fee (20% default), both integer cents;
+#    duplicates/failures earn nothing; an overturn voids the contributor share
+#    and the network keeps the fee. Balance is always SUM(ledger) - never stored.
+# 5. exit proof (live coordinator + real worker):
+python scripts/paid_compute_demo.py --coordinator-url http://127.0.0.1:8000
+#    -> mint -> top-up -> submit -> execute -> asserts charged == contributor +
+#       network, both > 0, and balance == top-up - charged (exit 0 only then).
+#    docs/pricing.md is the contract.
 
 # Dev DB reset (prototype: disposable; additive bootstrap covers added columns,
 # but removed constraints — e.g. Sprint 8's dropped (job,seq) unique — need a reset)
@@ -383,6 +407,12 @@ Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 | `RETENTION_TELEMETRY_DAYS` | `7` | retention: heartbeats + samples window (Sprint 35) |
 | `RETENTION_WORK_DAYS` | `30` | retention: terminal units/results/attempts/tokens |
 | `RETENTION_FINANCIAL_DAYS` | `0` | retention: ledger/records window (0 = keep forever) |
+| `BILLING_CURRENCY` | `USD` | paid compute: accounting currency (Sprint 37) |
+| `PAYMENT_PROVIDER` | `simulated` | paid compute: provider adapter (no real money) |
+| `PRICING_NETWORK_FEE_PERCENT` | `20` | paid compute: network share per unit |
+| `PRICING_RATE_CARD` | `` (built-in) | paid compute: JSON cents/unit override |
+| `BILLING_MIN_TOPUP_CENTS` | `100` | paid compute: minimum top-up |
+| `BILLING_MAX_TOPUP_CENTS` | `100000` | paid compute: maximum top-up |
 
 ## Private beta (Sprint 26, mocked swarm — see docs/beta.md for the runbook)
 

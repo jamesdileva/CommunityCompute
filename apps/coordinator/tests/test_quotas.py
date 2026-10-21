@@ -7,7 +7,12 @@ from settings_override import override_settings
 def _mint(client: TestClient, name: str) -> str:
     resp = client.post("/api/v1/customers", json={"name": name})
     assert resp.status_code == 201, resp.text
-    return resp.json()["api_key"]
+    key = resp.json()["api_key"]
+    funded = client.post(
+        "/api/v1/billing/topup", headers=_auth(key), json={"amount_cents": 1000}
+    )
+    assert funded.status_code == 201, funded.text
+    return key
 
 
 def _auth(key: str) -> dict:

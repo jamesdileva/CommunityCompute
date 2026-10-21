@@ -8,7 +8,13 @@ WORKER_A = "aaaaaaaa-0000-0000-0000-000000000001"
 def _mint(client: TestClient, name: str = "Acme") -> dict:
     resp = client.post("/api/v1/customers", json={"name": name})
     assert resp.status_code == 201, resp.text
-    return resp.json()
+    created = resp.json()
+    funded = client.post(
+        "/api/v1/billing/topup", headers=_auth(created["api_key"]),
+        json={"amount_cents": 1000},
+    )
+    assert funded.status_code == 201, funded.text
+    return created
 
 
 def _auth(key: str) -> dict:

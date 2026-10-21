@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
-from app.models.worker import Worker
 from app.models.work_unit import WorkUnit
+from app.models.worker import Worker
 from app.schemas.job import JobCreate
-from app.services import credits
+from app.services import billing, credits
 from app.services.isolation import scope_for_customer
 from app.services.workloads import workload_version
 
@@ -44,6 +44,8 @@ def create_job(
     short); anonymous submits stay free (backwards compatible open pool).
     Sprint 29: ``customer_id`` (set by the customer API from the authenticated
     key, never client-supplied) records ownership for status/result/usage.
+    Sprint 37: a customer job is prepaid — the balance is debited for
+    ``units x unit price`` in the same transaction (402 when short).
     """
     submitter = payload.submitter_worker_id
     if submitter is not None and db.get(Worker, submitter) is None:
@@ -79,6 +81,9 @@ def create_job(
     if submitter is not None:
         credits.spend_job_submit(db, worker_id=submitter, job_id=job_id,
                                  units=len(units))
+    if customer_id is not None:
+        billing.charge_job(db, customer_id=customer_id, job_id=job_id,
+                           workload_type=job.workload_type, units=len(units))
     db.add(job)
     db.add_all(units)
     db.commit()

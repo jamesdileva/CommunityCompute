@@ -13,7 +13,9 @@ Two audiences, one namespace:
   it owns; anything else is a 404 (no existence leak).
 
 Customer jobs run in the free community pool (architecture §21): no credits
-are charged, so they carry no ``submitter_worker_id``.
+are charged, so they carry no ``submitter_worker_id``. Sprint 37 makes
+customer jobs **prepaid** against a billing balance funded through the
+simulated payment provider; the open operator pool stays free.
 """
 
 import logging
@@ -27,6 +29,7 @@ from app.db import get_db
 from app.models.customer import Customer
 from app.models.job import Job
 from app.models.result import Result
+from app.schemas.billing import BillingSummary, TopupRequest, TopupResult
 from app.schemas.customer import (
     CustomerCreate,
     CustomerCreated,
@@ -45,11 +48,13 @@ from app.schemas.customer import (
     WorkloadManifestOut,
 )
 from app.schemas.job import JobCreate, JobStatusOut, WorkUnitOut
+from app.services import billing as billing_service
 from app.services import customers as customer_service
 from app.services import isolation, quotas
 from app.services import jobs as job_service
 from app.services import work as work_service
 from app.services import workloads as workload_service
+from app.services.billing import InsufficientFunds, InvalidAmount, PaymentFailed
 from app.services.isolation import AccessDenied
 from app.services.quotas import QuotaExceeded
 from app.services.ws_registry import registry
@@ -146,6 +151,43 @@ def workloads(
     return manifests
 
 
+# ---- customer: billing -------------------------------------------------------
+
+
+@router.get("/billing", response_model=BillingSummary)
+def billing_summary(
+    customer: Customer = Depends(require_customer), db: Session = Depends(get_db)
+) -> BillingSummary:
+    """Prepaid balance, rate card, and this customer's charged jobs."""
+    return BillingSummary(**billing_service.customer_summary(db, customer.id))
+
+
+@router.post("/billing/topup", response_model=TopupResult, status_code=201)
+def billing_topup(
+    payload: TopupRequest,
+    customer: Customer = Depends(require_customer),
+    db: Session = Depends(get_db),
+) -> TopupResult:
+    """Fund the prepaid balance via the configured (simulated) provider."""
+    try:
+        payment, balance = billing_service.topup(db, customer.id, payload.amount_cents)
+    except InvalidAmount as exc:
+        raise HTTPException(status_code=422, detail={"error": "invalid amount", "message": str(exc)})
+    except PaymentFailed as exc:
+        raise HTTPException(status_code=402, detail={"error": "payment failed", "message": str(exc)})
+    log.info("customer topup customer=%s amount=%d payment=%s",
+             customer.id, payload.amount_cents, payment.id)
+    return TopupResult(
+        payment_id=payment.id,
+        provider=payment.provider,
+        provider_ref=payment.provider_ref,
+        amount_cents=payment.amount_cents,
+        currency=payment.currency,
+        status=payment.status,
+        balance_cents=balance,
+    )
+
+
 # ---- customer: jobs + usage --------------------------------------------------
 
 
@@ -160,7 +202,7 @@ def submit_job(
     customer: Customer = Depends(require_customer),
     db: Session = Depends(get_db),
 ) -> JobAccepted:
-    """Submit a job for this customer (free community pool — no credits charged)."""
+    """Submit a prepaid job for this customer (quota-checked, then charged)."""
     try:
         quotas.check_submit(db, customer.id, payload.total_units)
     except QuotaExceeded as exc:
@@ -169,18 +211,26 @@ def submit_job(
             "error": "quota exceeded", "scope": exc.scope,
             "limit": exc.limit, "current": exc.current, "requested": exc.requested,
         })
-    job, units = job_service.create_job(
-        db,
-        JobCreate(
-            workload_type=payload.workload_type,
-            params=payload.params,
-            total_units=payload.total_units,
-            chunk_size=payload.chunk_size,
-            verify_sample=payload.verify_sample,
-            requirements=payload.requirements,
-        ),
-        customer_id=customer.id,
-    )
+    try:
+        job, units = job_service.create_job(
+            db,
+            JobCreate(
+                workload_type=payload.workload_type,
+                params=payload.params,
+                total_units=payload.total_units,
+                chunk_size=payload.chunk_size,
+                verify_sample=payload.verify_sample,
+                requirements=payload.requirements,
+            ),
+            customer_id=customer.id,
+        )
+    except InsufficientFunds as exc:
+        db.rollback()  # no job/units/ledger rows survive a shortfall
+        raise HTTPException(status_code=402, detail={
+            "error": "insufficient prepaid balance",
+            "need_cents": exc.need_cents,
+            "balance_cents": exc.balance_cents,
+        })
     log.info("customer job created id=%s customer=%s units=%d",
              job.id, customer.id, len(units))
     registry.broadcast_from_thread({"type": "work_available", "job_id": job.id})

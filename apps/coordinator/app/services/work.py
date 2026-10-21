@@ -28,7 +28,7 @@ from app.models.result import Result
 from app.models.work_unit import LEASE_STATES, WorkUnit
 from app.models.worker import Worker
 from app.schemas.work import WorkAssignment, WorkResult
-from app.services import accounting, credits, reputation, scoring
+from app.services import accounting, billing, credits, reputation, scoring
 from app.services.compat import check
 from app.services.workloads import definition as workload_definition
 from app.services.workloads import expected as workload_expected
@@ -351,6 +351,12 @@ def submit_result(db: Session, work_unit_id: str, payload: WorkResult) -> tuple[
                 work_unit_id=work_unit_id,
                 submitter_worker_id=job.submitter_worker_id if job else None,
             )
+            # Sprint 37: paid customer work pays the contributor here; free
+            # pool / operator jobs have no JobCharge and are a no-op.
+            billing.compensate_unit(
+                db, job=job, work_unit_id=work_unit_id,
+                worker_id=payload.worker_id,
+            )
             _maybe_spawn_duplicate(db, job, unit)
         else:
             _confirm_original(db, unit, result)
@@ -476,6 +482,9 @@ def _overturn_original(db: Session, duplicate: WorkUnit, disagreer: str,
     original.status = "failed"
     db.commit()
     accounting.void_record(db, duplicate.verify_of or "")
+    billing.void_compensation(
+        db, job_id=original.job_id, work_unit_id=duplicate.verify_of or ""
+    )
     reputation.record(db, disagreer, reputation.VERIFICATION_DISAGREED,
                       work_unit_id=duplicate.id, detail=message)
     log.info("unit %s DISAGREEMENT -> original and duplicate both failed", original.id)

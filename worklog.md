@@ -1025,3 +1025,37 @@ Proven locally (PC A = this PC `james` 192.168.4.68 → localhost coordinator); 
 **Next steps:**
 - Sprint 37 (roadmap next section): paid compute / metering, only when ready to move beyond the free pool + prototype credit.
 - Still required before open public enrollment: TLS everywhere, rate limiting + abuse detection, operator-endpoint auth, network-isolated real workloads, Linux sandbox parity, and a cross-network contributor test.
+
+---
+
+## 2026-10-21 - Sprint 37: Paid Compute Experiment
+**Goal:** Let a controlled customer pay for a supported workload and have the system calculate contributor/network compensation (roadmap Sprint 37).
+**Scope (in / out):**
+- In: per-workload rate card (integer cents/unit) + configurable network-fee percent; prepaid customer balance funded through a pluggable payment-provider interface (simulated only); upfront atomic job charges (402 when short); usage/charge records; contributor + network compensation per verified original unit; operator/customer/contributor billing views; docs + live exit proof.
+- Out: real payment processing, payouts/cash-out, refunds/invoicing, dynamic pricing, self-serve signup, TLS/rate limiting, protocol changes. Enrollment stays operator-controlled (Sprint 35 NO-GO for open public enrollment).
+**Exit condition (verbatim from roadmap):** A controlled customer can pay for a supported workload and the system can calculate contributor/network compensation.
+**Changes:**
+- Models: app/models/billing.py -- Payment (provider transaction, never secrets), BillingEntry (append-only customer ledger; balance = SUM), JobCharge (price snapshot frozen at submit), CompensationEntry (contributor/network split; voided_at, never deleted); registered in app/models/__init__.py
+- Services: app/services/payments.py (PaymentProvider Protocol + SimulatedProvider `sim_<hex>` refs + `get_provider`, unknown name fails closed), app/services/billing.py (DEFAULT_RATE_CARD hello_compute=5, stats_range=3, embeddings=10, image_generate=25 cents; rate-card JSON override; split_unit_price half-up integer cents; topup; charge_job; compensate_unit idempotent per unit; void_compensation contributor-only; customer/network/worker summaries)
+- Hooks: app/services/jobs.py create_job charges customer jobs in the same transaction (no orphan job on 402); app/services/work.py compensates verified originals and voids on `_overturn_original`
+- API: app/api/billing.py (operator `GET /billing/pricing|network|accounts`); customer `GET /api/v1/billing`, `POST /api/v1/billing/topup`; `GET /workers/{id}/earnings`; public catalog gains `price_cents_per_unit` + `currency`; router registration in app/main.py; config billing_* / pricing_* settings; VERSION -> 0.1.0-sprint37
+- Dashboard: "My node" paid-work earnings card (balance + paid units via workerEarnings; types.ts/api.ts)
+- Docs: docs/pricing.md (flow, rate card, split, config, API, non-goals), quick-reference.md (paid-compute section + env vars), README status
+- Tests: apps/coordinator/tests/test_billing.py (22: pricing/split/override/bad-config, catalog price, topup + bounds + auth, upfront debit, 402 with no orphan job, free operator pool, 2-unit split, duplicate not paid, overturn voids contributor keeps network fee, failed unit unpaid, operator views, per-customer balances, unknown worker 404, provider seam, exit-proof verdict/render + pricing doc)
+- Existing tests updated to fund customers before customer-API submits (test_customer_api, test_isolation, test_quotas `_mint`)
+- Exit proof: scripts/paid_compute_demo.py (mint customer -> top-up -> prepaid submit -> real worker loop -> assert charged == contributor + network, both > 0, balance == top-up - charged; exit 0 only then)
+**Tests run:**
+- test_billing.py -> 22 passed
+- full suite both orders -> 563 passed (was 541)
+- dashboard `npm run build` (tsc --noEmit && vite build) -> clean
+- Live: clean DB + real coordinator + real worker, `scripts/paid_compute_demo.py` -> job completed, charged 20c, contributor 16c, network 4c, balance 80c, `/billing/network` unallocated 0, exit 0 (repeated clean run: same). (First two attempts exposed a harness bug -- coordinator stdout piped and never drained, filling the 4KB pipe and hanging uvicorn; switched the live harness to DEVNULL, product was fine.)
+**Decisions:**
+- Prepaid + upfront charge (not postpaid): a job can never exist unpaid; the charge is staged inside create_job and commits with job+units. Shortfall returns 402 with need/have and leaves nothing behind.
+- Price is frozen on JobCharge at submit, so rate-card/fee changes never re-price in-flight work.
+- Compensation is paid per *verified original* unit (duplicates/failures earn nothing), matching Sprint 28's credit rule; an overturn voids the contributor share but the network keeps the fee for the attempt.
+- The payment provider is a narrow Protocol (`charge`/`refund`) with only `simulated` registered; no secrets, no network, no real money and no payouts (AGENTS.md non-goals). Stripe-style providers can be added without touching billing logic.
+- Default rate card is 5c/unit for hello_compute so a 20% fee is a non-zero integer cent (1c network / 4c contributor); fee percentages are integer and split always sums to the unit price.
+- Operator billing views stay unauthenticated, consistent with the existing operator customer/token routes; hardening remains a documented public-enrollment blocker.
+**Next steps:**
+- Sprint 38 (roadmap next section): workload marketplace (only when ready to expand beyond the fixed catalog).
+- Before open public enrollment: TLS, rate limiting + abuse detection, operator-endpoint auth, network-isolated real workloads, Linux sandbox parity, cross-network contributor test.

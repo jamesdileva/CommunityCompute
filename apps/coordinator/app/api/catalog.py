@@ -10,6 +10,7 @@ the human-readable contract a contributor needs before joining.
 from fastapi import APIRouter
 
 from app.config import get_settings
+from app.services import billing
 from app.services import workloads as workload_service
 
 router = APIRouter()
@@ -34,5 +35,7 @@ def list_workloads() -> list[dict]:
             "params": manifest.get("params", {}),
             "requirements": requirements,
             "gpu": bool(requirements.get("gpu")),
+            "price_cents_per_unit": billing.unit_price(manifest["name"]),
+            "currency": billing.currency(),
         })
     return out

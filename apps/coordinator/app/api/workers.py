@@ -6,17 +6,17 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import authenticate
 from app.config import get_settings
 from app.db import get_db
 from app.models.capability import WorkerCapability
 from app.models.worker import Worker
 from app.schemas.capability import CapabilityProfile
 from app.schemas.worker import WorkerOut, WorkerRegistration
+from app.services import reputation
 from app.services.availability import effective_status
 from app.services.tiers import hardware_tiers
 from app.services.ws_registry import registry
-from app.services import reputation
-from app.api.deps import authenticate
 
 log = logging.getLogger("coordinator")
 
@@ -171,3 +171,13 @@ def worker_credits(worker_id: str, db: Session = Depends(get_db)) -> dict:
     if db.get(Worker, worker_id) is None:
         raise HTTPException(status_code=404, detail={"error": "unknown worker"})
     return credits.totals(db, worker_id)
+
+
+@router.get("/{worker_id}/earnings")
+def worker_earnings(worker_id: str, db: Session = Depends(get_db)) -> dict:
+    """Paid-work compensation for this contributor (Sprint 37)."""
+    from app.services import billing
+
+    if db.get(Worker, worker_id) is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown worker"})
+    return billing.worker_earnings(db, worker_id)

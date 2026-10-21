@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.api_auth import router as auth_router
 from app.api.beta import router as beta_router
+from app.api.billing import router as billing_router
 from app.api.catalog import router as catalog_router
 from app.api.customer_api import router as customer_api_router
 from app.api.deps import CaptureBodyMiddleware
@@ -65,6 +66,7 @@ app.include_router(network_router)
 app.include_router(economics_router)
 app.include_router(beta_router)
 app.include_router(catalog_router)
+app.include_router(billing_router)
 app.include_router(ws_router)
 app.include_router(auth_router)
 app.include_router(customer_api_router)

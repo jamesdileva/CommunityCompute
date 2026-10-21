@@ -3,6 +3,7 @@
 from app.models.accounting import ContributionRecord
 from app.models.attempt import WorkUnitAttempt
 from app.models.auth import EnrollmentToken, WorkerCredential
+from app.models.billing import BillingEntry, CompensationEntry, JobCharge, Payment
 from app.models.capability import WorkerCapability
 from app.models.credit import CreditEntry
 from app.models.customer import Customer, CustomerApiKey
@@ -15,12 +16,16 @@ from app.models.work_unit import WorkUnit
 from app.models.worker import Worker
 
 __all__ = [
+    "BillingEntry",
+    "CompensationEntry",
     "ContributionRecord",
     "CreditEntry",
     "Customer",
     "CustomerApiKey",
     "EnrollmentToken",
     "Job",
+    "JobCharge",
+    "Payment",
     "ReputationEvent",
     "ResourceSample",
     "Result",

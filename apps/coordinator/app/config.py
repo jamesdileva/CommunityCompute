@@ -81,6 +81,16 @@ class Settings(BaseSettings):
     retention_telemetry_days: int = 7
     retention_work_days: int = 30
     retention_financial_days: int = 0
+    # Sprint 37 (paid compute experiment): prepaid customer billing. Money is
+    # integer cents and the only provider is the simulated one -- no real money
+    # moves and no payout is executed (AGENTS.md non-goals). PRICING_RATE_CARD
+    # is an optional JSON object merged over the built-in per-unit card.
+    billing_currency: str = "USD"
+    payment_provider: str = "simulated"
+    pricing_rate_card: str = ""
+    pricing_network_fee_percent: int = 20
+    billing_min_topup_cents: int = 100
+    billing_max_topup_cents: int = 100_000
 
 
 @lru_cache

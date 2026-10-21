@@ -2,7 +2,7 @@
 
 > Community-powered distributed compute network that turns idle consumer PCs into a pool of AI/compute workers.
 
-**Status:** Sprint 36 - public community network (static onboarding website, public workload catalog at `GET /workloads`, contributor "My node" dashboard tab, participant getting-started/support docs, and a scripted outside-participant onboarding proof). Contributors join the invited, allowlisted beta end-to-end without developer help — see `docs/getting-started.md` and `docs/public-beta-readiness.md`.
+**Status:** Sprint 37 - paid compute experiment (prepaid customer balances funded by a simulated payment provider, per-unit rate card with a configurable network fee, upfront job charges, contributor/network compensation per verified unit, and a live paid-compute exit proof). No real money moves and no payouts are executed — see `docs/pricing.md`. Earlier: Sprint 36 public community network (onboarding website, public catalog, "My node" dashboard, participant docs, onboarding proof).
 
 ## Core loop (stable abstraction)
 
